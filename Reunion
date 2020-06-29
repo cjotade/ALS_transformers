@@ -1,0 +1,78 @@
+(Capacidad de autoentrenarse)
+
+-> Ir agrandando ventana
+-> Retorno probabilidades de BERT (METRICA)
+** IDEA: cortar árbol con signos de puntuación **
+** Largo generación de frases dependiendo de contexto **
+
+BUSCAR TIEMPO DE ENTRENAMIENTO
+
+** WISHLIST **
+- TOKENS ESPECIALES
+- Traductor
+- Longitud de frases (Hasta punto)
+- VMs
+- Metrica
+- Continuar datos
+- Buscar BERT para ecuación en latex.
+- Pedir palabras en contexto casual.
+- Crear protocolo para guardar data.
+- Crear data como cadenas de Markov
+- Buscar como realiza google la creacion de sentencias.
+
+VM
+- buscar estrategia via google (posiblemente frecuentista)
+- colocar varios mask hacia adelante
+- utilizar mask inductivo
+
+-> DATA:
+- email 
+- videos 
+- papers 
+- latex 
+
+-> SEQ TO SEQ 
+- Predicción de palabras BERT y BETO con FineTuning y árbol de decisión
+- Prediccion de letras https://arxiv.org/pdf/1808.04444.pdf
+- Asistente de preguntas
+
+-> SENSOR DE VOZ (SPEECH TO TEXT)
+- ACLARAR ACCIONES 7 en total (a, e, i, o, u, m, n):
+	1) CLICK DERECHO E IZQUIERDO
+	2) ACTIVAR DOBLE CLICK
+	3) SCROLL
+	4) ZOOM IN
+	5) ZOOM OUT
+	6) MENU CAMBIO CONTEXTO
+	7) VOLVER CONTEXTO ANTERIOR
+	8) ACTIVAR CTRL
+- DRAGON
+
+-> TEXT TO SPEECH
+- Modulación de voz de Milan
+
+-> SCHEDULE O RECORDATORIO
+
+
+
+tarea que deberian ser ejecutadas en aplicacion e imaginarse distintos contextos.
+
+-> CONTEXTO
+- coloquial (español)
+- correo (español e ingles)
+- documentos (español e ingles)
+- clases (español)
+
+TAREAS
+1) definir contextos
+2) encapsular bert para generar frases
+	- crear frases de ejemplo
+3) limpieza de datos
+
+Marcos O +56974960802 
+Camilo E +56945138849 
+Alejandro B +56971827201
+
+
+
+

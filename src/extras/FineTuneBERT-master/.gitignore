@@ -1,0 +1,6 @@
+*.ipynb
+*.tsv
+.ipynb_checkpoints/*
+*.pyc
+Models/*
+__pycache__

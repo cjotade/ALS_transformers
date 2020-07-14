@@ -8,6 +8,22 @@ pip install -r requirements.txt
 ```
 If you have any incovenient using the forked transformers or apex libraries from our Github, please install them from scratch/source. For more details see https://github.com/huggingface/transformers and https://github.com/NVIDIA/apex.
 
+* Transformers:
+```python
+git clone https://github.com/huggingface/transformers
+cd transformers
+pip install .
+git pull
+pip install --upgrade .
+```
+
+* Apex:
+```python
+git clone https://github.com/NVIDIA/apex
+cd apex
+!pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+```
+
 ## Client/Server
 The client/server model is in src/models/run_generation_client.py and src/models/run_generation_server.py
 

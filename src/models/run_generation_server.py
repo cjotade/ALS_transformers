@@ -38,6 +38,8 @@ from transformers import (
     XLMWithLMHeadModel,
     XLNetLMHeadModel,
     XLNetTokenizer,
+    BertForMaskedLM, 
+    BertTokenizer
 )
 logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
 
@@ -55,6 +57,7 @@ MODEL_CLASSES = {
     "xlnet": (XLNetLMHeadModel, XLNetTokenizer),
     "transfo-xl": (TransfoXLLMHeadModel, TransfoXLTokenizer),
     "xlm": (XLMWithLMHeadModel, XLMTokenizer),
+    "bert": (BertForMaskedLM, BertTokenizer)
 }
 
 # Padding text to help Transformer-XL and XLNet with short prompts as proposed by Aman Rusia

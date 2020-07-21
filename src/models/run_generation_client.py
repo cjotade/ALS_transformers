@@ -14,7 +14,7 @@ sock.connect(server_address)
 
 try:
     # Send data
-    message = b'This is the message'
+    message = b'Tengo sed dame'
     print(f'Sending {message}')
 
     # Send length message and message

@@ -9,8 +9,8 @@ from transformers import *
         
 class Beto:
     def __init__(self):
-        self.tokenizer = BertTokenizer.from_pretrained("../weights/beto/", do_lower_case=False)
-        self.model = BertForMaskedLM.from_pretrained("../weights/beto/").to('cuda')
+        self.tokenizer = BertTokenizer.from_pretrained("../../weights/beto/", do_lower_case=False)
+        self.model = BertForMaskedLM.from_pretrained("../../weights/beto/").to('cuda')
         self.model.eval()
 
     def run(self, sentence):

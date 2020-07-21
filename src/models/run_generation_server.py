@@ -124,13 +124,19 @@ def prepare_xlnet_input(args, _, tokenizer, prompt_text):
 def prepare_transfoxl_input(args, _, tokenizer, prompt_text):
     prompt_text = (args.padding_text if args.padding_text else PADDING_TEXT) + prompt_text
     return prompt_text
+    
 
+def prepare_bert_input(args, _, tokenizer, prompt_text):
+    prompt_text = prompt_text + " " + tokenizer.mask_token
+
+    return tokenizer.decode(tokenizer.encode(prompt_text, add_special_tokens=True)) 
 
 PREPROCESSING_FUNCTIONS = {
     "ctrl": prepare_ctrl_input,
     "xlm": prepare_xlm_input,
     "xlnet": prepare_xlnet_input,
     "transfo-xl": prepare_transfoxl_input,
+    "bert": prepare_bert_input
 }
 
 
@@ -234,21 +240,40 @@ class GenerativeModel:
             input_ids = encoded_prompt
 
         return encoded_prompt, input_ids
-
+        
+    def generate_bert(self, input_ids, num_return_sequences):
+        hidden_reps = self.model(input_ids)[0]
+        tokenized_sentence = self.tokenizer.tokenize(self.tokenizer.decode(input_ids[0]))
+        mask_idx = np.where(np.array(tokenized_sentence) == self.tokenizer.mask_token)[0][0]
+        idxs = torch.argsort(hidden_reps[0, mask_idx], descending=True)
+        first_idxs = idxs[:num_return_sequences]
+        output_sequences = []
+        for idx in first_idxs:
+            tokenized_sentence[mask_idx] = self.tokenizer.decode([idx])
+            sequence = self.tokenizer.encode(
+                tokenized_sentence[1:-1], add_special_tokens=False, add_space_before_punct_symbol=True)
+            output_sequences.append(sequence)
+        return np.array(output_sequences)
+    
     def generate_sentences(self, prompt_text):
         encoded_prompt, input_ids = self.format_input(prompt_text)
-
-        output_sequences = self.model.generate(
-            input_ids=input_ids,
-            max_length=self.args.length + len(encoded_prompt[0]),
-            temperature=self.args.temperature,
-            top_k=self.args.k,
-            top_p=self.args.p,
-            repetition_penalty=self.args.repetition_penalty,
-            do_sample=True,
-            num_return_sequences=self.args.num_return_sequences,
-        )
-
+        
+        if self.args.model_type != "bert":
+            output_sequences = self.model.generate(
+                input_ids=input_ids,
+                max_length=self.args.length + len(encoded_prompt[0]),
+                temperature=self.args.temperature,
+                top_k=self.args.k,
+                top_p=self.args.p,
+                repetition_penalty=self.args.repetition_penalty,
+                do_sample=True,
+                num_return_sequences=self.args.num_return_sequences,
+            )
+        else:
+            output_sequences = self.generate_bert(
+                input_ids=input_ids,
+                num_return_sequences=self.args.num_return_sequences
+            )
         # Remove the batch dimension when returning multiple sequences
         if len(output_sequences.shape) > 2:
             output_sequences.squeeze_()
@@ -258,17 +283,25 @@ class GenerativeModel:
         for _, generated_sequence in enumerate(output_sequences):
             generated_sequence = generated_sequence.tolist()
 
+            if not isinstance(generated_sequence, list):
+                generated_sequence = [generated_sequence]
+
             # Decode text
             text = self.tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
-
+            
             # Remove all text after the stop token
             text = text[: text.find(self.args.stop_token) if self.args.stop_token else None]
 
             # Add the prompt at the beginning of the sequence. Remove the excess text that was used for pre-processing
-            total_sequence = (
-                prompt_text + text[len(self.tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
-            )
-
+            if self.args.model_type != "bert":
+                total_sequence = (
+                    prompt_text + text[len(self.tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
+                )
+            else:
+                total_sequence = (
+                    prompt_text + text[len(prompt_text) :]
+                )
+    
             generated_sequences.append(total_sequence)
 
         return generated_sequences
@@ -278,7 +311,7 @@ class GenerativeModel:
         return generated_sequences
 
 
-def main():
+def main(model):
     HOST = "localhost"
     PORT = 6234
 
@@ -305,7 +338,6 @@ def main():
 
                 # EXECUTE THE MODEL
                 predicted_tokens = model.run(sentence)
-                print()
                 print(f'Predicted tokens:{predicted_tokens}')
                 
                 # Send how many predictions to client
@@ -321,6 +353,7 @@ def main():
                     # Send the string
                     connection.send(pred_token.encode())
                 print("Tokens Predicted!")
+                print()
             finally:
                 # Clean up the connection
                 connection.close()
@@ -333,4 +366,4 @@ def main():
 if __name__ == "__main__":
     args = do_parse_args()
     model = GenerativeModel(args)
-    main()
+    main(model)

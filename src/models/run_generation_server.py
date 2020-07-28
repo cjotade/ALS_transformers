@@ -39,7 +39,9 @@ from transformers import (
     XLNetLMHeadModel,
     XLNetTokenizer,
     BertForMaskedLM, 
-    BertTokenizer
+    BertTokenizer,
+    MarianMTModel,
+    MarianTokenizer
 )
 logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
 
@@ -57,7 +59,8 @@ MODEL_CLASSES = {
     "xlnet": (XLNetLMHeadModel, XLNetTokenizer),
     "transfo-xl": (TransfoXLLMHeadModel, TransfoXLTokenizer),
     "xlm": (XLMWithLMHeadModel, XLMTokenizer),
-    "bert": (BertForMaskedLM, BertTokenizer)
+    "bert": (BertForMaskedLM, BertTokenizer),
+    "marian": (MarianMTModel, MarianTokenizer)
 }
 
 # Padding text to help Transformer-XL and XLNet with short prompts as proposed by Aman Rusia
@@ -128,15 +131,21 @@ def prepare_transfoxl_input(args, _, tokenizer, prompt_text):
 
 def prepare_bert_input(args, _, tokenizer, prompt_text):
     prompt_text = prompt_text + " " + tokenizer.mask_token
-
     return tokenizer.decode(tokenizer.encode(prompt_text, add_special_tokens=True)) 
+
+def prepare_marian_input(args, _, tokenizer, prompt_text):
+    special_token = f">>{args.translate_to}<< "
+    prompt_text = special_token + prompt_text 
+    print(prompt_text)
+    return [prompt_text]
 
 PREPROCESSING_FUNCTIONS = {
     "ctrl": prepare_ctrl_input,
     "xlm": prepare_xlm_input,
     "xlnet": prepare_xlnet_input,
     "transfo-xl": prepare_transfoxl_input,
-    "bert": prepare_bert_input
+    "bert": prepare_bert_input,
+    "marian": prepare_marian_input
 }
 
 
@@ -168,6 +177,7 @@ def do_parse_args():
 
     parser.add_argument("--prompt", type=str, default="")
     parser.add_argument("--length", type=int, default=20)
+    parser.add_argument("--translate_to", type=str, default="")
     parser.add_argument("--stop_token", type=str, default=None, help="Token at which text generation is stopped")
 
     parser.add_argument(
@@ -227,9 +237,17 @@ class GenerativeModel:
         if requires_preprocessing:
             prepare_input = PREPROCESSING_FUNCTIONS.get(self.args.model_type)
             preprocessed_prompt_text = prepare_input(self.args, self.model, self.tokenizer, prompt_text)
-            encoded_prompt = self.tokenizer.encode(
-                preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", add_space_before_punct_symbol=True
-            )
+            if self.args.model_type != "marian":
+                encoded_prompt = self.tokenizer.encode(
+                    preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", add_space_before_punct_symbol=True
+                )
+            else:
+                prepare_translation = self.tokenizer.prepare_translation_batch(
+                    preprocessed_prompt_text, return_tensors="pt"
+                )
+                encoded_prompt = prepare_translation["input_ids"]
+                print("ENCODEO")
+                print(encoded_prompt)
         else:
             encoded_prompt = self.tokenizer.encode(prompt_text, add_special_tokens=False, return_tensors="pt")
         encoded_prompt = encoded_prompt.to(self.args.device)
@@ -258,7 +276,7 @@ class GenerativeModel:
     def generate_sentences(self, prompt_text):
         encoded_prompt, input_ids = self.format_input(prompt_text)
         
-        if self.args.model_type != "bert":
+        if (self.args.model_type != "bert") and (self.args.model_type != "marian"):
             output_sequences = self.model.generate(
                 input_ids=input_ids,
                 max_length=self.args.length + len(encoded_prompt[0]),
@@ -269,11 +287,16 @@ class GenerativeModel:
                 do_sample=True,
                 num_return_sequences=self.args.num_return_sequences,
             )
+        elif (self.args.model_type == "marian"):
+            output_sequences = self.model.generate(
+                input_ids=input_ids
+            )
         else:
             output_sequences = self.generate_bert(
                 input_ids=input_ids,
                 num_return_sequences=self.args.num_return_sequences
             )
+
         # Remove the batch dimension when returning multiple sequences
         if len(output_sequences.shape) > 2:
             output_sequences.squeeze_()
@@ -287,20 +310,23 @@ class GenerativeModel:
                 generated_sequence = [generated_sequence]
 
             # Decode text
-            text = self.tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
+            text = self.tokenizer.decode(generated_sequence, skip_special_tokens=True, clean_up_tokenization_spaces=True)
             
             # Remove all text after the stop token
             text = text[: text.find(self.args.stop_token) if self.args.stop_token else None]
 
             # Add the prompt at the beginning of the sequence. Remove the excess text that was used for pre-processing
-            if self.args.model_type != "bert":
-                total_sequence = (
-                    prompt_text + text[len(self.tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
-                )
+            if self.args.model_type != "marian":
+                if self.args.model_type != "bert":
+                    total_sequence = (
+                        prompt_text + text[len(self.tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
+                    )
+                else:
+                    total_sequence = (
+                        prompt_text + text[len(prompt_text) :]
+                    )
             else:
-                total_sequence = (
-                    prompt_text + text[len(prompt_text) :]
-                )
+                total_sequence = text
     
             generated_sequences.append(total_sequence)
 

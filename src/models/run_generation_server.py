@@ -136,7 +136,6 @@ def prepare_bert_input(args, _, tokenizer, prompt_text):
 def prepare_marian_input(args, _, tokenizer, prompt_text):
     special_token = f">>{args.translate_to}<< "
     prompt_text = special_token + prompt_text 
-    print(prompt_text)
     return [prompt_text]
 
 PREPROCESSING_FUNCTIONS = {
@@ -246,8 +245,6 @@ class GenerativeModel:
                     preprocessed_prompt_text, return_tensors="pt"
                 )
                 encoded_prompt = prepare_translation["input_ids"]
-                print("ENCODEO")
-                print(encoded_prompt)
         else:
             encoded_prompt = self.tokenizer.encode(prompt_text, add_special_tokens=False, return_tensors="pt")
         encoded_prompt = encoded_prompt.to(self.args.device)

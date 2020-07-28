@@ -396,9 +396,12 @@ def main(model):
 
 if __name__ == "__main__":
     args = do_parse_args()
-    translator_args = do_parse_args()
-    translator_args.model_type = "marian"
-    translator_args.model_name_or_path = "Helsinki-NLP/opus-mt-en-ROMANCE"
-    translator = GenerativeModel(translator_args)
-    model = GenerativeModel(args, translator)
+    if args.translate_to != "":
+        translator_args = do_parse_args()
+        translator_args.model_type = "marian"
+        translator_args.model_name_or_path = "Helsinki-NLP/opus-mt-en-ROMANCE"
+        translator = GenerativeModel(translator_args)
+        model = GenerativeModel(args, translator)
+    else: 
+        model = GenerativeModel(args)
     main(model)

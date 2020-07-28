@@ -8,6 +8,7 @@ from transformers import BertForMaskedLM, BertTokenizer, GPT2Tokenizer, GPT2LMHe
 from transformers import *
         
 class Beto:
+    # Clases
     def __init__(self):
         self.tokenizer = BertTokenizer.from_pretrained("../../weights/beto/", do_lower_case=False)
         self.model = BertForMaskedLM.from_pretrained("../../weights/beto/").to('cuda')
@@ -19,6 +20,7 @@ class Beto:
         predicted_tokens = predict_masks(padded_tokens, hidden_reps, self.tokenizer)
         return predicted_tokens
 class Bert:
+    # ----
     def __init__(self):
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         self.model = BertForMaskedLM.from_pretrained('bert-base-uncased').to('cuda')
@@ -31,6 +33,7 @@ class Bert:
         return predicted_tokens
 
 class SciBert:
+    # SciBERT con papers de Milan
     def __init__(self):
         self.tokenizer = AutoTokenizer.from_pretrained('allenai/scibert_scivocab_uncased')
         self.model = BertForMaskedLM.from_pretrained('allenai/scibert_scivocab_uncased').to('cuda')
@@ -42,6 +45,8 @@ class SciBert:
         predicted_tokens = predict_masks(padded_tokens, hidden_reps, self.tokenizer)
         return predicted_tokens
 class GPT2:
+    # Traslator version BERT
+    # Está con papers
     def __init__(self):
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         self.model = GPT2LMHeadModel.from_pretrained('gpt2').to('cuda')

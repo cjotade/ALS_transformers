@@ -225,18 +225,20 @@ def get_tokenizer_and_model(args):
 
 
 class GenerativeModel:
-    def __init__(self, args):
+    def __init__(self, args, translator=None):
         self.args = args
         self.tokenizer, self.model = get_tokenizer_and_model(args)
         self.model.eval()
 
-    def format_input(self, prompt_text):
+        self.translator = translator
+
+    def format_input(self, prompt_text, args):
         # Different models need different input formatting and/or extra arguments
-        requires_preprocessing = self.args.model_type in PREPROCESSING_FUNCTIONS.keys()
+        requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
         if requires_preprocessing:
-            prepare_input = PREPROCESSING_FUNCTIONS.get(self.args.model_type)
-            preprocessed_prompt_text = prepare_input(self.args, self.model, self.tokenizer, prompt_text)
-            if self.args.model_type != "marian":
+            prepare_input = PREPROCESSING_FUNCTIONS.get(args.model_type)
+            preprocessed_prompt_text = prepare_input(args, self.model, self.tokenizer, prompt_text)
+            if args.model_type != "marian":
                 encoded_prompt = self.tokenizer.encode(
                     preprocessed_prompt_text, add_special_tokens=False, return_tensors="pt", add_space_before_punct_symbol=True
                 )
@@ -247,7 +249,7 @@ class GenerativeModel:
                 encoded_prompt = prepare_translation["input_ids"]
         else:
             encoded_prompt = self.tokenizer.encode(prompt_text, add_special_tokens=False, return_tensors="pt")
-        encoded_prompt = encoded_prompt.to(self.args.device)
+        encoded_prompt = encoded_prompt.to(args.device)
 
         if encoded_prompt.size()[-1] == 0:
             input_ids = None
@@ -270,28 +272,28 @@ class GenerativeModel:
             output_sequences.append(sequence)
         return np.array(output_sequences)
     
-    def generate_sentences(self, prompt_text):
-        encoded_prompt, input_ids = self.format_input(prompt_text)
+    def generate_sentences(self, prompt_text, args):
+        encoded_prompt, input_ids = self.format_input(prompt_text, args)
         
-        if (self.args.model_type != "bert") and (self.args.model_type != "marian"):
+        if (args.model_type != "bert") and (args.model_type != "marian"):
             output_sequences = self.model.generate(
                 input_ids=input_ids,
-                max_length=self.args.length + len(encoded_prompt[0]),
-                temperature=self.args.temperature,
-                top_k=self.args.k,
-                top_p=self.args.p,
-                repetition_penalty=self.args.repetition_penalty,
+                max_length=args.length + len(encoded_prompt[0]),
+                temperature=args.temperature,
+                top_k=args.k,
+                top_p=args.p,
+                repetition_penalty=args.repetition_penalty,
                 do_sample=True,
-                num_return_sequences=self.args.num_return_sequences,
+                num_return_sequences=args.num_return_sequences,
             )
-        elif (self.args.model_type == "marian"):
+        elif (args.model_type == "marian"):
             output_sequences = self.model.generate(
                 input_ids=input_ids
             )
         else:
             output_sequences = self.generate_bert(
                 input_ids=input_ids,
-                num_return_sequences=self.args.num_return_sequences
+                num_return_sequences=args.num_return_sequences
             )
 
         # Remove the batch dimension when returning multiple sequences
@@ -310,11 +312,11 @@ class GenerativeModel:
             text = self.tokenizer.decode(generated_sequence, skip_special_tokens=True, clean_up_tokenization_spaces=True)
             
             # Remove all text after the stop token
-            text = text[: text.find(self.args.stop_token) if self.args.stop_token else None]
+            text = text[: text.find(args.stop_token) if args.stop_token else None]
 
             # Add the prompt at the beginning of the sequence. Remove the excess text that was used for pre-processing
-            if self.args.model_type != "marian":
-                if self.args.model_type != "bert":
+            if args.model_type != "marian":
+                if args.model_type != "bert":
                     total_sequence = (
                         prompt_text + text[len(self.tokenizer.decode(encoded_prompt[0], clean_up_tokenization_spaces=True)) :]
                     )
@@ -330,7 +332,13 @@ class GenerativeModel:
         return generated_sequences
 
     def run(self, sentence):
-        generated_sequences = self.generate_sentences(sentence)
+        generated_sequences = self.generate_sentences(sentence, self.args)
+        if self.translator is not None:
+            translated_sequences = []
+            for sentence in generated_sequences:
+                translated_sequence = self.translator.generate_sentences(sentence, self.translator.args)
+                translated_sequences.append(translated_sequence[0])
+            generated_sequences = translated_sequences
         return generated_sequences
 
 
@@ -388,5 +396,9 @@ def main(model):
 
 if __name__ == "__main__":
     args = do_parse_args()
-    model = GenerativeModel(args)
+    translator_args = do_parse_args()
+    translator_args.model_type = "marian"
+    translator_args.model_name_or_path = "Helsinki-NLP/opus-mt-en-ROMANCE"
+    translator = GenerativeModel(translator_args)
+    model = GenerativeModel(args, translator)
     main(model)

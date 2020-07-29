@@ -22,7 +22,6 @@ docutils==0.15.2
 elasticsearch==7.8.0
 entrypoints==0.3
 enum-compat==0.0.3
-faiss==1.5.3
 filelock==3.0.12
 future==0.18.2
 git-python==1.0.3
@@ -72,7 +71,6 @@ pathtools==0.1.2
 pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==7.1.2
-pkg-resources==0.0.0
 portalocker==1.7.0
 prometheus-client==0.8.0
 promise==2.3
@@ -104,7 +102,7 @@ s3transfer==0.3.3
 sacrebleu==1.4.10
 sacremoses==0.0.43
 scikit-learn==0.23.1
-scipy==1.5.0
+scipy==1.5.2
 Send2Trash==1.5.0
 sentencepiece==0.1.92
 sentry-sdk==0.15.1

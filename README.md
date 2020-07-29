@@ -33,7 +33,12 @@ Some useful parameters for the server:
 * model_name_or_path ("Path to pre-trained model or shortcut name selected in the list")
 * length ("Length of returning sequence")
 * num_return_sequences ("The number of samples to generate.")
+* translate_to ("use MarianMT translator, examples: es, es_CL, fr")
 
 ```python
 python run_generation_server.py --model_type=gpt2 --model_name_or_path=gpt2 --length=10 --num_return_sequences=3
 ```
+
+## Optional Requirements
+- CUDA 10.2 
+- NVIDIA Driver 440.1

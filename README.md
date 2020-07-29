@@ -21,7 +21,7 @@ pip install --upgrade .
 ```python
 git clone https://github.com/NVIDIA/apex
 cd apex
-!pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 ```
 
 ## Client/Server

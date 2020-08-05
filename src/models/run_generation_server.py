@@ -25,6 +25,8 @@ import logging
 import numpy as np
 import torch
 
+from lm_scorer.models.auto import AutoLMScorer as LMScorer
+
 from transformers import (
     CTRLLMHeadModel,
     CTRLTokenizer,
@@ -225,13 +227,32 @@ def get_tokenizer_and_model(args):
 
 
 class GenerativeModel:
-    def __init__(self, args, translator=None):
-        self.args = args
+    def __init__(self, args, translator_input=None, translator_output=None):
+        self.set_args(args)
+        self.set_tokenizer_and_model(args)
+        self.set_translator_input(translator_input)
+        self.set_translator_output(translator_output)
+        self.set_scorer(args)
+        
+    def set_tokenizer_and_model(self, args):
         self.tokenizer, self.model = get_tokenizer_and_model(args)
         self.model.eval()
 
-        self.translator = translator
+    def set_args(self, args):
+        self.args = args
 
+    def set_translator_input(self, translator):
+        self.translator_input = translator
+    
+    def set_translator_output(self, translator):
+        self.translator_output = translator
+    
+    def set_scorer(self, args):
+        try:
+            self.scorer = LMScorer.from_pretrained(args.model_name_or_path, device=args.device, batch_size=1)
+        except:
+            logger.info("WARNING: Using default scorer")
+            self.scorer = LMScorer.from_pretrained("gpt2", device=args.device, batch_size=1)
     def format_input(self, prompt_text, args):
         # Different models need different input formatting and/or extra arguments
         requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
@@ -271,6 +292,24 @@ class GenerativeModel:
                 tokenized_sentence[1:-1], add_special_tokens=False, add_space_before_punct_symbol=True)
             output_sequences.append(sequence)
         return np.array(output_sequences)
+
+    def optimal_length(self, total_sequence, len_prompt):
+        # Tokens generated sentence
+        total_sequence_tokens = self.tokenizer.tokenize(total_sequence) 
+        # List with all possible lengths
+        length_options = [] 
+        # Converting different sentence lengths back to string
+        for i in range(len_prompt, len_prompt + self.args.length): 
+            length_i = self.tokenizer.convert_tokens_to_string(total_sequence_tokens[:i])
+            length_i = length_i.replace(' ,', ',').replace(' .', '.').replace(' :', ':').replace(' ;', ';')
+            length_options.append(length_i)
+        # Scores for every length option
+        scores = self.scorer.sentence_score(length_options, reduce="mean") 
+        # Sentence with maximum score
+        optimal_sentence = scores.index(max(scores)) 
+        optimal_seq = length_options[optimal_sentence] 
+        optimal_score = max(scores)
+        return optimal_seq, optimal_score
     
     def generate_sentences(self, prompt_text, args):
         encoded_prompt, input_ids = self.format_input(prompt_text, args)
@@ -327,16 +366,26 @@ class GenerativeModel:
             else:
                 total_sequence = text
     
-            generated_sequences.append(total_sequence)
+            optimal_seq, optimal_score = self.optimal_length(total_sequence, len(encoded_prompt[0]))
+
+            generated_sequences.append(optimal_seq)
 
         return generated_sequences
 
     def run(self, sentence):
+        if self.translator_input is not None:
+            # Spanish to English
+            translated_sequence = self.translator_input.generate_sentences(sentence, self.translator_input.args)
+            sentence = translated_sequence[0]
+            print(f"Translator input: {sentence}")
+        # Generate sequences
         generated_sequences = self.generate_sentences(sentence, self.args)
-        if self.translator is not None:
+        print(f"Generated: {generated_sequences}")
+        if self.translator_output is not None:
+            # English to Spanish
             translated_sequences = []
             for sentence in generated_sequences:
-                translated_sequence = self.translator.generate_sentences(sentence, self.translator.args)
+                translated_sequence = self.translator_output.generate_sentences(sentence, self.translator_output.args)
                 translated_sequences.append(translated_sequence[0])
             generated_sequences = translated_sequences
         return generated_sequences
@@ -397,11 +446,20 @@ def main(model):
 if __name__ == "__main__":
     args = do_parse_args()
     if args.translate_to != "":
-        translator_args = do_parse_args()
-        translator_args.model_type = "marian"
-        translator_args.model_name_or_path = "Helsinki-NLP/opus-mt-en-ROMANCE"
-        translator = GenerativeModel(translator_args)
-        model = GenerativeModel(args, translator)
+        translator_input_args = do_parse_args()
+        translator_output_args = do_parse_args()
+
+        translator_input_args.model_type = "marian"
+        translator_output_args.model_type = "marian"
+
+        translator_input_args.model_name_or_path = "Helsinki-NLP/opus-mt-ROMANCE-en"
+        translator_output_args.model_name_or_path = "Helsinki-NLP/opus-mt-en-ROMANCE"
+
+        translator_input = GenerativeModel(translator_input_args)
+        translator_output = GenerativeModel(translator_output_args)
+
+        model = GenerativeModel(args, translator_input, translator_output)
     else: 
         model = GenerativeModel(args)
     main(model)
+

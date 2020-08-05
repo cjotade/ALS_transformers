@@ -253,6 +253,7 @@ class GenerativeModel:
         except:
             logger.info("WARNING: Using default scorer")
             self.scorer = LMScorer.from_pretrained("gpt2", device=args.device, batch_size=1)
+
     def format_input(self, prompt_text, args):
         # Different models need different input formatting and/or extra arguments
         requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
@@ -367,7 +368,10 @@ class GenerativeModel:
                 total_sequence = text
     
             optimal_seq, optimal_score = self.optimal_length(total_sequence, len(encoded_prompt[0]))
-
+            
+            print("COMPARISON")
+            print(total_sequence)
+            print(optimal_seq)
             generated_sequences.append(optimal_seq)
 
         return generated_sequences
@@ -381,6 +385,7 @@ class GenerativeModel:
         # Generate sequences
         generated_sequences = self.generate_sentences(sentence, self.args)
         print(f"Generated: {generated_sequences}")
+        print()
         if self.translator_output is not None:
             # English to Spanish
             translated_sequences = []

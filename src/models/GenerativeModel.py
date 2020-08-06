@@ -196,10 +196,3 @@ class GenerativeModel:
                 translated_sequences.append(translated_sequence[0])
             generated_sequences = translated_sequences
         return generated_sequences
-
-
-if __name__ == "__main__":
-    args = do_parse_args()
-    model = GenerativeModel(args)
-
-    model.run("Hello, can you give me some")

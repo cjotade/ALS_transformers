@@ -25,6 +25,8 @@ import logging
 import numpy as np
 import torch
 
+import copy
+
 from lm_scorer.models.auto import AutoLMScorer as LMScorer
 
 from transformers import (
@@ -227,12 +229,14 @@ def get_tokenizer_and_model(args):
 
 
 class GenerativeModel:
-    def __init__(self, args, translator_input=None, translator_output=None):
+    def __init__(self, args, set_translators_and_scorer=True):
         self.set_args(args)
         self.set_tokenizer_and_model(args)
-        self.set_translator_input(translator_input)
-        self.set_translator_output(translator_output)
-        self.set_scorer(args)
+        
+        if set_translators_and_scorer:
+            self.set_scorer(args)
+            self.set_translator_input(args)
+            self.set_translator_output(args)
         
     def set_tokenizer_and_model(self, args):
         self.tokenizer, self.model = get_tokenizer_and_model(args)
@@ -241,12 +245,6 @@ class GenerativeModel:
     def set_args(self, args):
         self.args = args
 
-    def set_translator_input(self, translator):
-        self.translator_input = translator
-    
-    def set_translator_output(self, translator):
-        self.translator_output = translator
-    
     def set_scorer(self, args):
         try:
             self.scorer = LMScorer.from_pretrained(args.model_name_or_path, device=args.device, batch_size=1)
@@ -254,6 +252,24 @@ class GenerativeModel:
             logger.info("WARNING: Using default scorer")
             self.scorer = LMScorer.from_pretrained("gpt2", device=args.device, batch_size=1)
 
+    def set_translator_input(self, args):
+        if args.translate_to != "":
+            translator_input_args = do_parse_args()
+            translator_input_args.translate_to == "en"
+            translator_input_args.model_type = "marian"
+            translator_input_args.model_name_or_path = "Helsinki-NLP/opus-mt-ROMANCE-en"
+            translator_input = GenerativeModel(translator_input_args, set_translators_and_scorer=False)
+            self.translator_input = translator_input
+    
+    def set_translator_output(self, args):
+        if args.translate_to != "":
+            translator_output_args = do_parse_args()
+            translator_output_args.model_type = "marian"
+            translator_output_args.model_name_or_path = "Helsinki-NLP/opus-mt-en-ROMANCE"
+            translator_output = GenerativeModel(translator_output_args, set_translators_and_scorer=False)
+            self.translator_output = translator_output
+    
+    
     def format_input(self, prompt_text, args):
         # Different models need different input formatting and/or extra arguments
         requires_preprocessing = args.model_type in PREPROCESSING_FUNCTIONS.keys()
@@ -366,12 +382,15 @@ class GenerativeModel:
                     )
             else:
                 total_sequence = text
-    
-            optimal_seq, optimal_score = self.optimal_length(total_sequence, len(encoded_prompt[0]))
-            
-            print("COMPARISON")
-            print(total_sequence)
-            print(optimal_seq)
+
+            if (args.model_type != "marian"):
+                optimal_seq, optimal_score = self.optimal_length(total_sequence, len(encoded_prompt[0]))
+                print("COMPARISON")
+                print(total_sequence)
+                print(optimal_seq)
+            else:
+                optimal_seq = total_sequence
+
             generated_sequences.append(optimal_seq)
 
         return generated_sequences
@@ -394,6 +413,7 @@ class GenerativeModel:
                 translated_sequences.append(translated_sequence[0])
             generated_sequences = translated_sequences
         return generated_sequences
+
 
 
 def main(model):
@@ -450,21 +470,5 @@ def main(model):
 
 if __name__ == "__main__":
     args = do_parse_args()
-    if args.translate_to != "":
-        translator_input_args = do_parse_args()
-        translator_output_args = do_parse_args()
-
-        translator_input_args.model_type = "marian"
-        translator_output_args.model_type = "marian"
-
-        translator_input_args.model_name_or_path = "Helsinki-NLP/opus-mt-ROMANCE-en"
-        translator_output_args.model_name_or_path = "Helsinki-NLP/opus-mt-en-ROMANCE"
-
-        translator_input = GenerativeModel(translator_input_args)
-        translator_output = GenerativeModel(translator_output_args)
-
-        model = GenerativeModel(args, translator_input, translator_output)
-    else: 
-        model = GenerativeModel(args)
+    model = GenerativeModel(args)
     main(model)
-

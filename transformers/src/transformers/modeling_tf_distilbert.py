@@ -23,8 +23,14 @@ import numpy as np
 import tensorflow as tf
 
 from .configuration_distilbert import DistilBertConfig
-from .file_utils import MULTIPLE_CHOICE_DUMMY_INPUTS, add_start_docstrings, add_start_docstrings_to_callable
+from .file_utils import (
+    MULTIPLE_CHOICE_DUMMY_INPUTS,
+    add_code_sample_docstrings,
+    add_start_docstrings,
+    add_start_docstrings_to_callable,
+)
 from .modeling_tf_utils import (
+    TFMaskedLanguageModelingLoss,
     TFMultipleChoiceLoss,
     TFPreTrainedModel,
     TFQuestionAnsweringLoss,
@@ -41,6 +47,7 @@ from .tokenization_utils import BatchEncoding
 
 logger = logging.getLogger(__name__)
 
+_TOKENIZER_FOR_DOC = "DistilBertTokenizer"
 
 TF_DISTILBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "distilbert-base-uncased",
@@ -110,7 +117,7 @@ class TFEmbeddings(tf.keras.layers.Layer):
     def call(self, inputs, inputs_embeds=None, mode="embedding", training=False):
         """Get token embeddings of inputs.
         Args:
-            inputs: list of three int64 tensors with shape [batch_size, length]: (input_ids, position_ids, token_type_ids)
+            inputs: list of two int64 tensors with shape [batch_size, length]: (input_ids, position_ids)
             mode: string, a valid value is one of "embedding" and "linear".
         Returns:
             outputs: (1) If mode == "embedding", output embedding tensor, float32 with
@@ -522,9 +529,9 @@ DISTILBERT_START_DOCSTRING = r"""
 
         - a single Tensor with input_ids only and nothing else: :obj:`model(inputs_ids)`
         - a list of varying length with one or several input Tensors IN THE ORDER given in the docstring:
-          :obj:`model([input_ids, attention_mask])` or :obj:`model([input_ids, attention_mask, token_type_ids])`
+          :obj:`model([input_ids, attention_mask])`
         - a dictionary with one or several input Tensors associated to the input names given in the docstring:
-          :obj:`model({'input_ids': input_ids, 'token_type_ids': token_type_ids})`
+          :obj:`model({'input_ids': input_ids})`
 
     Parameters:
         config (:class:`~transformers.DistilBertConfig`): Model configuration class with all the parameters of the model.
@@ -539,7 +546,7 @@ DISTILBERT_INPUTS_DOCSTRING = r"""
 
             Indices can be obtained using :class:`transformers.BertTokenizer`.
             See :func:`transformers.PreTrainedTokenizer.encode` and
-            :func:`transformers.PreTrainedTokenizer.encode_plus` for details.
+            :func:`transformers.PreTrainedTokenizer.__call__` for details.
 
             `What are input IDs? <../glossary.html#input-ids>`__
         attention_mask (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
@@ -575,6 +582,7 @@ class TFDistilBertModel(TFDistilBertPreTrainedModel):
         self.distilbert = TFDistilBertMainLayer(config, name="distilbert")  # Embeddings
 
     @add_start_docstrings_to_callable(DISTILBERT_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="distilbert-base-uncased")
     def call(self, inputs, **kwargs):
         r"""
     Returns:
@@ -592,17 +600,6 @@ class TFDistilBertModel(TFDistilBertPreTrainedModel):
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import DistilBertTokenizer, TFDistilBertModel
-
-        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-cased')
-        model = TFDistilBertModel.from_pretrained('distilbert-base-cased')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute"))[None, :]  # Batch size 1
-        outputs = model(input_ids)
-        last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
         """
         outputs = self.distilbert(inputs, **kwargs)
         return outputs
@@ -630,7 +627,7 @@ class TFDistilBertLMHead(tf.keras.layers.Layer):
 @add_start_docstrings(
     """DistilBert Model with a `masked language modeling` head on top. """, DISTILBERT_START_DOCSTRING,
 )
-class TFDistilBertForMaskedLM(TFDistilBertPreTrainedModel):
+class TFDistilBertForMaskedLM(TFDistilBertPreTrainedModel, TFMaskedLanguageModelingLoss):
     def __init__(self, config, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
         self.vocab_size = config.vocab_size
@@ -647,8 +644,24 @@ class TFDistilBertForMaskedLM(TFDistilBertPreTrainedModel):
         return self.vocab_projector.input_embeddings
 
     @add_start_docstrings_to_callable(DISTILBERT_INPUTS_DOCSTRING)
-    def call(self, inputs, **kwargs):
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="distilbert-base-uncased")
+    def call(
+        self,
+        inputs=None,
+        attention_mask=None,
+        head_mask=None,
+        inputs_embeds=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        labels=None,
+        training=False,
+    ):
         r"""
+        labels (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
+            Labels for computing the masked language modeling loss.
+            Indices should be in ``[-100, 0, ..., config.vocab_size]`` (see ``input_ids`` docstring)
+            Tokens with indices set to ``-100`` are ignored (masked), the loss is only computed for the tokens with labels
+            in ``[0, ..., config.vocab_size]``
 
     Returns:
         :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers,DistilBertConfig`) and inputs:
@@ -665,20 +678,23 @@ class TFDistilBertForMaskedLM(TFDistilBertPreTrainedModel):
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import DistilBertTokenizer, TFDistilBertForMaskedLM
-
-        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-cased')
-        model = TFDistilBertForMaskedLM.from_pretrained('distilbert-base-cased')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute"))[None, :]  # Batch size 1
-        outputs = model(input_ids)
-        prediction_scores = outputs[0]
-
         """
-        distilbert_output = self.distilbert(inputs, **kwargs)
+        if isinstance(inputs, (tuple, list)):
+            labels = inputs[6] if len(inputs) > 6 else labels
+            if len(inputs) > 6:
+                inputs = inputs[:6]
+        elif isinstance(inputs, (dict, BatchEncoding)):
+            labels = inputs.pop("labels", labels)
+
+        distilbert_output = self.distilbert(
+            inputs,
+            attention_mask=attention_mask,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            training=training,
+        )
 
         hidden_states = distilbert_output[0]  # (bs, seq_length, dim)
         prediction_logits = self.vocab_transform(hidden_states)  # (bs, seq_length, dim)
@@ -687,6 +703,11 @@ class TFDistilBertForMaskedLM(TFDistilBertPreTrainedModel):
         prediction_logits = self.vocab_projector(prediction_logits)
 
         outputs = (prediction_logits,) + distilbert_output[1:]
+
+        if labels is not None:
+            loss = self.compute_loss(labels, prediction_logits)
+            outputs = (loss,) + outputs
+
         return outputs  # logits, (hidden_states), (attentions)
 
 
@@ -713,15 +734,16 @@ class TFDistilBertForSequenceClassification(TFDistilBertPreTrainedModel, TFSeque
         self.dropout = tf.keras.layers.Dropout(config.seq_classif_dropout)
 
     @add_start_docstrings_to_callable(DISTILBERT_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="distilbert-base-uncased")
     def call(
         self,
-        input_ids=None,
+        inputs=None,
         attention_mask=None,
         head_mask=None,
         inputs_embeds=None,
-        labels=None,
         output_attentions=None,
         output_hidden_states=None,
+        labels=None,
         training=False,
     ):
         r"""
@@ -746,22 +768,16 @@ class TFDistilBertForSequenceClassification(TFDistilBertPreTrainedModel, TFSeque
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import DistilBertTokenizer, TFDistilBertForSequenceClassification
-
-        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-cased')
-        model = TFDistilBertForSequenceClassification.from_pretrained('distilbert-base-cased')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute"))[None, :]  # Batch size 1
-        labels = tf.reshape(tf.constant(1), (-1, 1)) # Batch size 1
-        outputs = model(input_ids, labels=labels)
-        loss, logits = outputs[:2]
-
         """
+        if isinstance(inputs, (tuple, list)):
+            labels = inputs[6] if len(inputs) > 6 else labels
+            if len(inputs) > 6:
+                inputs = inputs[:6]
+        elif isinstance(inputs, (dict, BatchEncoding)):
+            labels = inputs.pop("labels", labels)
+
         distilbert_output = self.distilbert(
-            input_ids,
+            inputs,
             attention_mask=attention_mask,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
@@ -802,15 +818,16 @@ class TFDistilBertForTokenClassification(TFDistilBertPreTrainedModel, TFTokenCla
         )
 
     @add_start_docstrings_to_callable(DISTILBERT_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="distilbert-base-uncased")
     def call(
         self,
-        input_ids=None,
+        inputs=None,
         attention_mask=None,
         head_mask=None,
         inputs_embeds=None,
-        labels=None,
         output_attentions=None,
         output_hidden_states=None,
+        labels=None,
         training=False,
     ):
         r"""
@@ -833,22 +850,16 @@ class TFDistilBertForTokenClassification(TFDistilBertPreTrainedModel, TFTokenCla
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import DistilBertTokenizer, TFDistilBertForTokenClassification
-
-        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-cased')
-        model = TFDistilBertForTokenClassification.from_pretrained('distilbert-base-cased')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
-        labels = tf.reshape(tf.constant([1] * tf.size(input_ids).numpy()), (-1, tf.size(input_ids))) # Batch size 1
-        outputs = model(input_ids, labels=labels)
-        loss, scores = outputs[:2]
-
         """
+        if isinstance(inputs, (tuple, list)):
+            labels = inputs[6] if len(inputs) > 6 else labels
+            if len(inputs) > 6:
+                inputs = inputs[:6]
+        elif isinstance(inputs, (dict, BatchEncoding)):
+            labels = inputs.pop("labels", labels)
+
         outputs = self.distilbert(
-            input_ids,
+            inputs,
             attention_mask=attention_mask,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
@@ -862,7 +873,7 @@ class TFDistilBertForTokenClassification(TFDistilBertPreTrainedModel, TFTokenCla
         sequence_output = self.dropout(sequence_output, training=training)
         logits = self.classifier(sequence_output)
 
-        outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
+        outputs = (logits,) + outputs[1:]  # add hidden states and attention if they are here
 
         if labels is not None:
             loss = self.compute_loss(labels, logits)
@@ -881,7 +892,7 @@ class TFDistilBertForMultipleChoice(TFDistilBertPreTrainedModel, TFMultipleChoic
         super().__init__(config, *inputs, **kwargs)
 
         self.distilbert = TFDistilBertMainLayer(config, name="distilbert")
-        self.dropout = tf.keras.layers.Dropout(config.hidden_dropout_prob)
+        self.dropout = tf.keras.layers.Dropout(config.seq_classif_dropout)
         self.pre_classifier = tf.keras.layers.Dense(
             config.dim,
             kernel_initializer=get_initializer(config.initializer_range),
@@ -902,15 +913,16 @@ class TFDistilBertForMultipleChoice(TFDistilBertPreTrainedModel, TFMultipleChoic
         return {"input_ids": tf.constant(MULTIPLE_CHOICE_DUMMY_INPUTS)}
 
     @add_start_docstrings_to_callable(DISTILBERT_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="distilbert-base-uncased")
     def call(
         self,
         inputs,
         attention_mask=None,
         head_mask=None,
         inputs_embeds=None,
-        labels=None,
         output_attentions=None,
         output_hidden_states=None,
+        labels=None,
         training=False,
     ):
         r"""
@@ -936,35 +948,25 @@ class TFDistilBertForMultipleChoice(TFDistilBertPreTrainedModel, TFMultipleChoic
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import DistilBertTokenizer, TFDistilBertForMultipleChoice
-
-        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
-        model = TFDistilBertForMultipleChoice.from_pretrained('distilbert-base-uncased')
-        choices = ["Hello, my dog is cute", "Hello, my cat is amazing"]
-
-        input_ids = tf.constant([tokenizer.encode(s, add_special_tokens=True) for s in choices])[None, :] # Batch size 1, 2 choices
-        labels = tf.reshape(tf.constant(1), (-1, 1))
-        outputs = model(input_ids, labels=labels)
-
-        loss, classification_scores = outputs[:2]
-
         """
         if isinstance(inputs, (tuple, list)):
             input_ids = inputs[0]
             attention_mask = inputs[1] if len(inputs) > 1 else attention_mask
             head_mask = inputs[2] if len(inputs) > 2 else head_mask
             inputs_embeds = inputs[3] if len(inputs) > 3 else inputs_embeds
-            assert len(inputs) <= 4, "Too many inputs."
+            output_attentions = inputs[4] if len(inputs) > 4 else output_attentions
+            output_hidden_states = inputs[5] if len(inputs) > 5 else output_hidden_states
+            labels = inputs[6] if len(inputs) > 6 else labels
+            assert len(inputs) <= 7, "Too many inputs."
         elif isinstance(inputs, (dict, BatchEncoding)):
             input_ids = inputs.get("input_ids")
             attention_mask = inputs.get("attention_mask", attention_mask)
             head_mask = inputs.get("head_mask", head_mask)
             inputs_embeds = inputs.get("inputs_embeds", inputs_embeds)
-            assert len(inputs) <= 4, "Too many inputs."
+            output_attentions = inputs.get("output_attentions", output_attentions)
+            output_hidden_states = inputs.get("output_hidden_states", output_hidden_states)
+            labels = inputs.get("labels", labels)
+            assert len(inputs) <= 7, "Too many inputs."
         else:
             input_ids = inputs
 
@@ -977,12 +979,17 @@ class TFDistilBertForMultipleChoice(TFDistilBertPreTrainedModel, TFMultipleChoic
 
         flat_input_ids = tf.reshape(input_ids, (-1, seq_length)) if input_ids is not None else None
         flat_attention_mask = tf.reshape(attention_mask, (-1, seq_length)) if attention_mask is not None else None
+        flat_inputs_embeds = (
+            tf.reshape(inputs_embeds, (-1, seq_length, shape_list(inputs_embeds)[3]))
+            if inputs_embeds is not None
+            else None
+        )
 
         flat_inputs = [
             flat_input_ids,
             flat_attention_mask,
             head_mask,
-            inputs_embeds,
+            flat_inputs_embeds,
             output_attentions,
             output_hidden_states,
         ]
@@ -1021,19 +1028,17 @@ class TFDistilBertForQuestionAnswering(TFDistilBertPreTrainedModel, TFQuestionAn
         self.dropout = tf.keras.layers.Dropout(config.qa_dropout)
 
     @add_start_docstrings_to_callable(DISTILBERT_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="distilbert-base-uncased")
     def call(
         self,
-        input_ids=None,
+        inputs=None,
         attention_mask=None,
         head_mask=None,
         inputs_embeds=None,
-        start_positions=None,
-        end_positions=None,
-        cls_index=None,
-        p_mask=None,
-        is_impossible=None,
         output_attentions=None,
         output_hidden_states=None,
+        start_positions=None,
+        end_positions=None,
         training=False,
     ):
         r"""
@@ -1063,24 +1068,18 @@ class TFDistilBertForQuestionAnswering(TFDistilBertPreTrainedModel, TFQuestionAn
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import DistilBertTokenizer, TFDistilBertForQuestionAnswering
-
-        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-cased')
-        model = TFDistilBertForQuestionAnswering.from_pretrained('distilbert-base-cased')
-        question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
-        input_dict = tokenizer.encode_plus(question, text, return_tensors='tf')
-        start_scores, end_scores = model(input_dict)
-
-        all_tokens = tokenizer.convert_ids_to_tokens(input_dict["input_ids"].numpy()[0])
-        answer = ' '.join(all_tokens[tf.math.argmax(start_scores, 1)[0] : tf.math.argmax(end_scores, 1)[0]+1])
-
         """
+        if isinstance(inputs, (tuple, list)):
+            start_positions = inputs[6] if len(inputs) > 6 else start_positions
+            end_positions = inputs[7] if len(inputs) > 7 else end_positions
+            if len(inputs) > 6:
+                inputs = inputs[:6]
+        elif isinstance(inputs, (dict, BatchEncoding)):
+            start_positions = inputs.pop("start_positions", start_positions)
+            end_positions = inputs.pop("end_positions", start_positions)
+
         distilbert_output = self.distilbert(
-            input_ids,
+            inputs,
             attention_mask=attention_mask,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,

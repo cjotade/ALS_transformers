@@ -22,8 +22,9 @@ import numpy as np
 import tensorflow as tf
 
 from .configuration_openai import OpenAIGPTConfig
-from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
+from .file_utils import add_code_sample_docstrings, add_start_docstrings, add_start_docstrings_to_callable
 from .modeling_tf_utils import (
+    TFCausalLanguageModelingLoss,
     TFConv1D,
     TFPreTrainedModel,
     TFSequenceSummary,
@@ -37,6 +38,8 @@ from .tokenization_utils import BatchEncoding
 
 
 logger = logging.getLogger(__name__)
+
+_TOKENIZER_FOR_DOC = "OpenAIGPTTokenizer"
 
 TF_OPENAI_GPT_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "openai-gpt",
@@ -403,7 +406,7 @@ OPENAI_GPT_INPUTS_DOCSTRING = r"""
 
             Indices can be obtained using :class:`transformers.GPT2Tokenizer`.
             See :func:`transformers.PreTrainedTokenizer.encode` and
-            :func:`transformers.PreTrainedTokenizer.encode_plus` for details.
+            :func:`transformers.PreTrainedTokenizer.__call__` for details.
 
             `What are input IDs? <../glossary.html#input-ids>`__
         attention_mask (:obj:`tf.Tensor` or :obj:`Numpy array` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
@@ -449,6 +452,7 @@ class TFOpenAIGPTModel(TFOpenAIGPTPreTrainedModel):
         self.transformer = TFOpenAIGPTMainLayer(config, name="transformer")
 
     @add_start_docstrings_to_callable(OPENAI_GPT_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="openai-gpt")
     def call(self, inputs, **kwargs):
         r"""
     Return:
@@ -466,18 +470,6 @@ class TFOpenAIGPTModel(TFOpenAIGPTPreTrainedModel):
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import OpenAIGPTTokenizer, TFOpenAIGPTModel
-
-        tokenizer = OpenAIGPTTokenizer.from_pretrained('openai-gpt')
-        model = TFOpenAIGPTModel.from_pretrained('openai-gpt')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
-        outputs = model(input_ids)
-        last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
-
         """
         outputs = self.transformer(inputs, **kwargs)
         return outputs
@@ -488,7 +480,7 @@ class TFOpenAIGPTModel(TFOpenAIGPTPreTrainedModel):
     (linear layer with weights tied to the input embeddings). """,
     OPENAI_GPT_START_DOCSTRING,
 )
-class TFOpenAIGPTLMHeadModel(TFOpenAIGPTPreTrainedModel):
+class TFOpenAIGPTLMHeadModel(TFOpenAIGPTPreTrainedModel, TFCausalLanguageModelingLoss):
     def __init__(self, config, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
         self.transformer = TFOpenAIGPTMainLayer(config, name="transformer")
@@ -497,8 +489,25 @@ class TFOpenAIGPTLMHeadModel(TFOpenAIGPTPreTrainedModel):
         return self.transformer.tokens_embed
 
     @add_start_docstrings_to_callable(OPENAI_GPT_INPUTS_DOCSTRING)
-    def call(self, inputs, **kwargs):
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="openai-gpt")
+    def call(
+        self,
+        inputs,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        labels=None,
+        training=False,
+    ):
         r"""
+        labels (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
+            Labels for computing the cross entropy classification loss.
+            Indices should be in ``[0, ..., config.vocab_size - 1]``.
+
     Return:
         :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.OpenAIGPTConfig`) and inputs:
         prediction_scores (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`):
@@ -514,25 +523,36 @@ class TFOpenAIGPTLMHeadModel(TFOpenAIGPTPreTrainedModel):
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import OpenAIGPTTokenizer, TFOpenAIGPTLMHeadModel
-
-        tokenizer = OpenAIGPTTokenizer.from_pretrained('openai-gpt')
-        model = TFOpenAIGPTLMHeadModel.from_pretrained('openai-gpt')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
-        outputs = model(input_ids)
-        logits = outputs[0]
-
         """
-        transformer_outputs = self.transformer(inputs, **kwargs)
+        if isinstance(inputs, (tuple, list)):
+            labels = inputs[8] if len(inputs) > 8 else labels
+            if len(inputs) > 8:
+                inputs = inputs[:8]
+        elif isinstance(inputs, (dict, BatchEncoding)):
+            labels = inputs.pop("labels", labels)
+
+        transformer_outputs = self.transformer(
+            inputs,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            training=training,
+        )
         hidden_states = transformer_outputs[0]
 
-        lm_logits = self.transformer.tokens_embed(hidden_states, mode="linear")
+        logits = self.transformer.tokens_embed(hidden_states, mode="linear")
+        outputs = (logits,) + transformer_outputs[1:]
 
-        outputs = (lm_logits,) + transformer_outputs[1:]
+        if labels is not None:
+            # shift labels to the left and cut last logit token
+            logits = logits[:, :-1]
+            labels = labels[:, 1:]
+            loss = self.compute_loss(labels, logits)
+            outputs = (loss,) + outputs
 
         return outputs  # lm_logits, (all hidden_states), (attentions)
 
@@ -601,26 +621,23 @@ class TFOpenAIGPTDoubleHeadsModel(TFOpenAIGPTPreTrainedModel):
 
     Examples::
 
-        # For example purposes. Not runnable.
-        import tensorflow as tf
-        from transformers import OpenAIGPTTokenizer, TFOpenAIGPTDoubleHeadsModel
+        >>> import tensorflow as tf
+        >>> from transformers import OpenAIGPTTokenizer, TFOpenAIGPTDoubleHeadsModel
 
-        tokenizer = OpenAIGPTTokenizer.from_pretrained('openai-gpt')
-        model = TFOpenAIGPTDoubleHeadsModel.from_pretrained('openai-gpt')
+        >>> tokenizer = OpenAIGPTTokenizer.from_pretrained('openai-gpt')
+        >>> model = TFOpenAIGPTDoubleHeadsModel.from_pretrained('openai-gpt')
 
-        # Add a [CLS] to the vocabulary (we should train it also!)
-        # This option is currently not implemented in TF 2.0
-        raise NotImplementedError
-        tokenizer.add_special_tokens({'cls_token': '[CLS]'})
-        model.resize_token_embeddings(len(tokenizer))  # Update the model embeddings with the new vocabulary size
-        print(tokenizer.cls_token_id, len(tokenizer))  # The newly token the last token of the vocabulary
+        >>> # Add a [CLS] to the vocabulary (we should train it also!)
+        >>> tokenizer.add_special_tokens({'cls_token': '[CLS]'})
+        >>> model.resize_token_embeddings(len(tokenizer))  # Update the model embeddings with the new vocabulary size
+        >>> print(tokenizer.cls_token_id, len(tokenizer))  # The newly token the last token of the vocabulary
 
-        choices = ["Hello, my dog is cute [CLS]", "Hello, my cat is cute [CLS]"]
-        input_ids = tf.constant([tokenizer.encode(s) for s in choices])[None, :]  # Batch size 1, 2 choices
-        mc_token_ids = tf.constant([input_ids.size(-1), input_ids.size(-1)])[None, :]  # Batch size 1
-        outputs = model(input_ids, mc_token_ids=mc_token_ids)
-        lm_prediction_scores, mc_prediction_scores = outputs[:2]
-
+        >>> choices = ["Hello, my dog is cute [CLS]", "Hello, my cat is cute [CLS]"]
+        >>> encoding = tokenizer(choices, return_tensors="tf")
+        >>> inputs = {k: tf.expand_dims(v, 0) for k, v in encoding.items()}
+        >>> inputs["mc_token_ids"]= tf.constant([inputs["input_ids"].shape[-1] - 1, inputs["input_ids"].shape[-1] - 1])[None, :]  # Batch size 1
+        >>> outputs = model(inputs)
+        >>> lm_prediction_scores, mc_prediction_scores = outputs[:2]
         """
 
         if isinstance(inputs, (tuple, list)):
@@ -633,7 +650,7 @@ class TFOpenAIGPTDoubleHeadsModel(TFOpenAIGPTPreTrainedModel):
             mc_token_ids = inputs[6] if len(inputs) > 6 else mc_token_ids
             output_attentions = inputs[7] if len(inputs) > 7 else output_attentions
             assert len(inputs) <= 8, "Too many inputs."
-        elif isinstance(inputs, dict):
+        elif isinstance(inputs, (dict, BatchEncoding)):
             input_ids = inputs.get("input_ids")
             attention_mask = inputs.get("attention_mask", attention_mask)
             token_type_ids = inputs.get("token_type_ids", token_type_ids)

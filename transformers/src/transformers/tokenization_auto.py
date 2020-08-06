@@ -18,8 +18,6 @@
 import logging
 from collections import OrderedDict
 
-from transformers.configuration_mobilebert import MobileBertConfig
-
 from .configuration_auto import (
     AlbertConfig,
     AutoConfig,
@@ -44,6 +42,7 @@ from .configuration_auto import (
     XLNetConfig,
 )
 from .configuration_marian import MarianConfig
+from .configuration_mobilebert import MobileBertConfig
 from .configuration_utils import PretrainedConfig
 from .tokenization_albert import AlbertTokenizer
 from .tokenization_bart import BartTokenizer, MBartTokenizer
@@ -205,7 +204,7 @@ class AutoTokenizer:
         if not isinstance(config, PretrainedConfig):
             config = AutoConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
 
-        if "bert-base-japanese" in pretrained_model_name_or_path:
+        if "bert-base-japanese" in str(pretrained_model_name_or_path):
             return BertJapaneseTokenizer.from_pretrained(pretrained_model_name_or_path, *inputs, **kwargs)
 
         use_fast = kwargs.pop("use_fast", False)

@@ -24,22 +24,43 @@ import logging
 import math
 import os
 import warnings
+from dataclasses import dataclass
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss
 
-from transformers.modeling_bert import BertIntermediate
-
 from .activations import gelu, gelu_new, swish
 from .configuration_mobilebert import MobileBertConfig
-from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
+from .file_utils import (
+    ModelOutput,
+    add_code_sample_docstrings,
+    add_start_docstrings,
+    add_start_docstrings_to_callable,
+    replace_return_docstrings,
+)
+from .modeling_bert import BertIntermediate
+from .modeling_outputs import (
+    BaseModelOutput,
+    BaseModelOutputWithPooling,
+    MaskedLMOutput,
+    MultipleChoiceModelOutput,
+    NextSentencePredictorOutput,
+    QuestionAnsweringModelOutput,
+    SequenceClassifierOutput,
+    TokenClassifierOutput,
+)
 from .modeling_utils import PreTrainedModel, find_pruneable_heads_and_indices, prune_linear_layer
 
 
 logger = logging.getLogger(__name__)
-MOBILEBERT_PRETRAINED_MODEL_ARCHIVE_LIST = ["mobilebert-uncased"]
+
+_CONFIG_FOR_DOC = "MobileBertConfig"
+_TOKENIZER_FOR_DOC = "MobileBertTokenizer"
+
+MOBILEBERT_PRETRAINED_MODEL_ARCHIVE_LIST = ["google/mobilebert-uncased"]
 
 
 def load_tf_weights_in_mobilebert(model, config, tf_checkpoint_path):
@@ -157,18 +178,22 @@ class MobileBertEmbeddings(nn.Module):
         self.LayerNorm = NORM2FN[config.normalization_type](config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
+        # position_ids (1, len position emb) is contiguous in memory and exported when serialized
+        self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
+
     def forward(self, input_ids=None, token_type_ids=None, position_ids=None, inputs_embeds=None):
         if input_ids is not None:
             input_shape = input_ids.size()
         else:
             input_shape = inputs_embeds.size()[:-1]
+
         seq_length = input_shape[1]
-        device = input_ids.device if input_ids is not None else inputs_embeds.device
+
         if position_ids is None:
-            position_ids = torch.arange(seq_length, dtype=torch.long, device=device)
-            position_ids = position_ids.unsqueeze(0).expand(input_shape)
+            position_ids = self.position_ids[:, :seq_length]
+
         if token_type_ids is None:
-            token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
+            token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=self.position_ids.device)
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
 
@@ -525,9 +550,10 @@ class MobileBertEncoder(nn.Module):
         encoder_attention_mask=None,
         output_attentions=False,
         output_hidden_states=False,
+        return_tuple=False,
     ):
-        all_hidden_states = ()
-        all_attentions = ()
+        all_hidden_states = () if output_hidden_states else None
+        all_attentions = () if output_attentions else None
         for i, layer_module in enumerate(self.layer):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
@@ -549,12 +575,11 @@ class MobileBertEncoder(nn.Module):
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
 
-        outputs = (hidden_states,)
-        if output_hidden_states:
-            outputs = outputs + (all_hidden_states,)
-        if output_attentions:
-            outputs = outputs + (all_attentions,)
-        return outputs  # last-layer hidden state, (all hidden states), (all attentions)
+        if return_tuple:
+            return tuple(v for v in [hidden_states, all_hidden_states, all_attentions] if v is not None)
+        return BaseModelOutput(
+            last_hidden_state=hidden_states, hidden_states=all_hidden_states, attentions=all_attentions
+        )
 
 
 class MobileBertPooler(nn.Module):
@@ -572,7 +597,7 @@ class MobileBertPooler(nn.Module):
             return first_token_tensor
         else:
             pooled_output = self.dense(first_token_tensor)
-            pooled_output = F.tanh(pooled_output)
+            pooled_output = torch.tanh(pooled_output)
             return pooled_output
 
 
@@ -657,6 +682,39 @@ class MobileBertPreTrainedModel(PreTrainedModel):
             module.bias.data.zero_()
 
 
+@dataclass
+class MobileBertForPretrainingOutput(ModelOutput):
+    """
+    Output type of :class:`~transformers.MobileBertForPretrainingModel`.
+
+    Args:
+        loss (`optional`, returned when ``labels`` is provided, ``torch.FloatTensor`` of shape :obj:`(1,)`):
+            Total loss as the sum of the masked language modeling loss and the next sequence prediction (classification) loss.
+        prediction_logits (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        seq_relationship_logits (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, 2)`):
+            Prediction scores of the next sequence prediction (classification) head (scores of True/False
+            continuation before SoftMax).
+        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
+            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
+            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
+            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
+            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[torch.FloatTensor]
+    prediction_logits: torch.FloatTensor
+    seq_relationship_logits: torch.FloatTensor
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
 MOBILEBERT_START_DOCSTRING = r"""
     This model is a PyTorch `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`_ sub-class.
     Use it as a regular PyTorch Module and refer to the PyTorch documentation for all matter related to general
@@ -675,7 +733,7 @@ MOBILEBERT_INPUTS_DOCSTRING = r"""
 
             Indices can be obtained using :class:`transformers.MobileBertTokenizer`.
             See :func:`transformers.PreTrainedTokenizer.encode` and
-            :func:`transformers.PreTrainedTokenizer.encode_plus` for details.
+            :func:`transformers.PreTrainedTokenizer.__call__` for details.
 
             `What are input IDs? <../glossary.html#input-ids>`__
         attention_mask (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
@@ -711,6 +769,12 @@ MOBILEBERT_INPUTS_DOCSTRING = r"""
             is used in the cross-attention if the model is configured as a decoder.
             Mask values selected in ``[0, 1]``:
             ``1`` for tokens that are NOT MASKED, ``0`` for MASKED tokens.
+        output_attentions (:obj:`bool`, `optional`, defaults to :obj:`None`):
+            If set to ``True``, the attentions tensors of all attention layers are returned. See ``attentions`` under returned tensors for more detail.
+        output_hidden_states (:obj:`bool`, `optional`, defaults to :obj:`None`):
+            If set to ``True``, the hidden states of all layers are returned. See ``hidden_states`` under returned tensors for more detail.
+        return_tuple (:obj:`bool`, `optional`, defaults to :obj:`None`):
+            If set to ``True``, the output of the model will be a plain tuple instead of a ``dataclass``.
 """
 
 
@@ -722,6 +786,8 @@ class MobileBertModel(MobileBertPreTrainedModel):
     """
         https://arxiv.org/pdf/2004.02984.pdf
     """
+
+    authorized_missing_keys = [r"position_ids"]
 
     def __init__(self, config):
         super().__init__(config)
@@ -747,6 +813,12 @@ class MobileBertModel(MobileBertPreTrainedModel):
             self.encoder.layer[layer].attention.prune_heads(heads)
 
     @add_start_docstrings_to_callable(MOBILEBERT_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(
+        tokenizer_class=_TOKENIZER_FOR_DOC,
+        checkpoint="google/mobilebert-uncased",
+        output_type=BaseModelOutputWithPooling,
+        config_class=_CONFIG_FOR_DOC,
+    )
     def forward(
         self,
         input_ids=None,
@@ -759,52 +831,13 @@ class MobileBertModel(MobileBertPreTrainedModel):
         encoder_attention_mask=None,
         output_hidden_states=None,
         output_attentions=None,
+        return_tuple=None,
     ):
-        r"""
-    Return:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.MobileBertConfig`) and inputs:
-        last_hidden_state (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`):
-            Sequence of hidden-states at the output of the last layer of the model.
-        pooler_output (:obj:`torch.FloatTensor`: of shape :obj:`(batch_size, hidden_size)`):
-            Last layer hidden-state of the first token of the sequence (classification token)
-            further processed by a Linear layer and a Tanh activation function. The Linear
-            layer weights are trained from the next sentence prediction (classification)
-            objective during pre-training.
-
-            This output is usually *not* a good summary
-            of the semantic content of the input, you're often better with averaging or pooling
-            the sequence of hidden-states for the whole input sequence.
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
-
-    Examples::
-
-        from transformers import MobileBertModel, MobileBertTokenizer
-        import torch
-
-        tokenizer = MobileBertTokenizer.from_pretrained(model_name_or_path)
-        model = MobileBertModel.from_pretrained(model_name_or_path)
-
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-        outputs = model(input_ids)
-
-        last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
-
-        """
-
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
+        return_tuple = return_tuple if return_tuple is not None else self.config.use_return_tuple
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
@@ -857,13 +890,20 @@ class MobileBertModel(MobileBertPreTrainedModel):
             encoder_attention_mask=encoder_extended_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            return_tuple=return_tuple,
         )
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output)
-        outputs = (sequence_output, pooled_output,) + encoder_outputs[
-            1:
-        ]  # add hidden_states and attentions if they are here
-        return outputs  # sequence_output, pooled_output, (hidden_states), (attentions)
+
+        if return_tuple:
+            return (sequence_output, pooled_output) + encoder_outputs[1:]
+
+        return BaseModelOutputWithPooling(
+            last_hidden_state=sequence_output,
+            pooler_output=pooled_output,
+            hidden_states=encoder_outputs.hidden_states,
+            attentions=encoder_outputs.attentions,
+        )
 
 
 @add_start_docstrings(
@@ -905,6 +945,7 @@ class MobileBertForPreTraining(MobileBertPreTrainedModel):
             self._tie_or_clone_weights(output_embeddings, self.get_input_embeddings())
 
     @add_start_docstrings_to_callable(MOBILEBERT_INPUTS_DOCSTRING)
+    @replace_return_docstrings(output_type=MobileBertForPretrainingOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         input_ids=None,
@@ -917,6 +958,7 @@ class MobileBertForPreTraining(MobileBertPreTrainedModel):
         next_sentence_label=None,
         output_attentions=None,
         output_hidden_states=None,
+        return_tuple=None,
     ):
         r"""
         labels (``torch.LongTensor`` of shape ``(batch_size, sequence_length)``, `optional`, defaults to :obj:`None`):
@@ -930,36 +972,24 @@ class MobileBertForPreTraining(MobileBertPreTrainedModel):
             ``0`` indicates sequence B is a continuation of sequence A,
             ``1`` indicates sequence B is a random sequence.
     Returns:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.MobileBertConfig`) and inputs:
-        loss (`optional`, returned when ``masked_lm_labels`` is provided) ``torch.FloatTensor`` of shape ``(1,)``:
-            Total loss as the sum of the masked language modeling loss and the next sequence prediction (classification) loss.
-        prediction_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`)
-            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
-        seq_relationship_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, 2)`):
-            Prediction scores of the next sequence prediction (classification) head (scores of True/False
-            continuation before SoftMax).
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
 
     Examples::
-        from transformers import MobileBertTokenizer, MobileBertForPreTraining
-        import torch
-        tokenizer = MobileBertTokenizer.from_pretrained(model_name_or_path)
-        model = MobileBertForPreTraining.from_pretrained(model_name_or_path)
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-        outputs = model(input_ids)
-        prediction_scores, seq_relationship_scores = outputs[:2]
+
+        >>> from transformers import MobileBertTokenizer, MobileBertForPreTraining
+        >>> import torch
+
+        >>> tokenizer = MobileBertTokenizer.from_pretrained("google/mobilebert-uncased")
+        >>> model = MobileBertForPreTraining.from_pretrained("google/mobilebert-uncased")
+
+        >>> input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
+        >>> outputs = model(input_ids)
+
+        >>> prediction_logits = outptus.prediction_logits
+        >>> seq_relationship_logits = outputs.seq_relationship_logits
 
         """
+        return_tuple = return_tuple if return_tuple is not None else self.config.use_return_tuple
+
         outputs = self.mobilebert(
             input_ids,
             attention_mask=attention_mask,
@@ -969,21 +999,29 @@ class MobileBertForPreTraining(MobileBertPreTrainedModel):
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            return_tuple=return_tuple,
         )
         sequence_output, pooled_output = outputs[:2]
         prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
-        outputs = (prediction_scores, seq_relationship_score,) + outputs[
-            2:
-        ]  # add hidden states and attention if they are here
 
+        total_loss = None
         if labels is not None and next_sentence_label is not None:
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
             next_sentence_loss = loss_fct(seq_relationship_score.view(-1, 2), next_sentence_label.view(-1))
             total_loss = masked_lm_loss + next_sentence_loss
-            outputs = (total_loss,) + outputs
 
-        return outputs  # (loss), prediction_scores, seq_relationship_score, (hidden_states), (attentions)
+        if return_tuple:
+            output = (prediction_scores, seq_relationship_score) + outputs[2:]
+            return ((total_loss,) + output) if total_loss is not None else output
+
+        return MobileBertForPretrainingOutput(
+            loss=total_loss,
+            prediction_logits=prediction_scores,
+            seq_relationship_logits=seq_relationship_score,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
 
 
 @add_start_docstrings("""MobileBert Model with a `language modeling` head on top. """, MOBILEBERT_START_DOCSTRING)
@@ -1022,6 +1060,12 @@ class MobileBertForMaskedLM(MobileBertPreTrainedModel):
             self._tie_or_clone_weights(output_embeddings, self.get_input_embeddings())
 
     @add_start_docstrings_to_callable(MOBILEBERT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_code_sample_docstrings(
+        tokenizer_class=_TOKENIZER_FOR_DOC,
+        checkpoint="google/mobilebert-uncased",
+        output_type=MaskedLMOutput,
+        config_class=_CONFIG_FOR_DOC,
+    )
     def forward(
         self,
         input_ids=None,
@@ -1035,6 +1079,7 @@ class MobileBertForMaskedLM(MobileBertPreTrainedModel):
         encoder_attention_mask=None,
         output_attentions=None,
         output_hidden_states=None,
+        return_tuple=None,
         **kwargs
     ):
         r"""
@@ -1045,38 +1090,6 @@ class MobileBertForMaskedLM(MobileBertPreTrainedModel):
             in ``[0, ..., config.vocab_size]``
         kwargs (:obj:`Dict[str, any]`, optional, defaults to `{}`):
             Used to hide legacy arguments that have been deprecated.
-
-    Returns:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.MobileBertConfig`) and inputs:
-        masked_lm_loss (`optional`, returned when ``labels`` is provided) ``torch.FloatTensor`` of shape ``(1,)``:
-            Masked language modeling loss.
-        prediction_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`)
-            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
-
-        Examples::
-
-            from transformers import MobileBertTokenizer, MobileBertForMaskedLM
-            import torch
-
-            tokenizer = MobileBertTokenizer.from_pretrained('mobilebert-uncased')
-            model = MobileBertForMaskedLM.from_pretrained('mobilebert-uncased')
-
-            input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-            outputs = model(input_ids, labels=input_ids)
-
-            loss, prediction_scores = outputs[:2]
-
         """
         if "masked_lm_labels" in kwargs:
             warnings.warn(
@@ -1084,6 +1097,7 @@ class MobileBertForMaskedLM(MobileBertPreTrainedModel):
                 FutureWarning,
             )
             labels = kwargs.pop("masked_lm_labels")
+        return_tuple = return_tuple if return_tuple is not None else self.config.use_return_tuple
 
         outputs = self.mobilebert(
             input_ids,
@@ -1096,19 +1110,27 @@ class MobileBertForMaskedLM(MobileBertPreTrainedModel):
             encoder_attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            return_tuple=return_tuple,
         )
 
         sequence_output = outputs[0]
         prediction_scores = self.cls(sequence_output)
 
-        outputs = (prediction_scores,) + outputs[2:]  # Add hidden states and attention if they are here
-
+        masked_lm_loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()  # -100 index = padding token
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
-            outputs = (masked_lm_loss,) + outputs
 
-        return outputs  # (masked_lm_loss), prediction_scores, (hidden_states), (attentions)
+        if return_tuple:
+            output = (prediction_scores,) + outputs[2:]
+            return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
+
+        return MaskedLMOutput(
+            loss=masked_lm_loss,
+            logits=prediction_scores,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
 
 
 class MobileBertOnlyNSPHead(nn.Module):
@@ -1135,6 +1157,7 @@ class MobileBertForNextSentencePrediction(MobileBertPreTrainedModel):
         self.init_weights()
 
     @add_start_docstrings_to_callable(MOBILEBERT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @replace_return_docstrings(output_type=NextSentencePredictorOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         input_ids=None,
@@ -1146,6 +1169,7 @@ class MobileBertForNextSentencePrediction(MobileBertPreTrainedModel):
         next_sentence_label=None,
         output_attentions=None,
         output_hidden_states=None,
+        return_tuple=None,
     ):
         r"""
         next_sentence_label (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`, defaults to :obj:`None`):
@@ -1155,38 +1179,24 @@ class MobileBertForNextSentencePrediction(MobileBertPreTrainedModel):
             ``1`` indicates sequence B is a random sequence.
 
     Returns:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.MobileBertConfig`) and inputs:
-        loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when :obj:`next_sentence_label` is provided):
-            Next sequence prediction (classification) loss.
-        seq_relationship_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, 2)`):
-            Prediction scores of the next sequence prediction (classification) head (scores of True/False continuation before SoftMax).
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
 
     Examples::
 
-        from transformers import MobileBertTokenizer, MobileBertForNextSentencePrediction
-        import torch
+        >>> from transformers import MobileBertTokenizer, MobileBertForNextSentencePrediction
+        >>> import torch
 
-        tokenizer = MobileBertTokenizer.from_pretrained('mobilebert-uncased')
-        model = MobileBertForNextSentencePrediction.from_pretrained('mobilebert-uncased')
+        >>> tokenizer = MobileBertTokenizer.from_pretrained('google/mobilebert-uncased')
+        >>> model = MobileBertForNextSentencePrediction.from_pretrained('google/mobilebert-uncased')
 
-        prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
-        next_sentence = "The sky is blue due to the shorter wavelength of blue light."
-        encoding = tokenizer.encode_plus(prompt, next_sentence, return_tensors='pt')
+        >>> prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
+        >>> next_sentence = "The sky is blue due to the shorter wavelength of blue light."
+        >>> encoding = tokenizer(prompt, next_sentence, return_tensors='pt')
 
-        loss, logits = model(**encoding, next_sentence_label=torch.LongTensor([1]))
-        assert logits[0, 0] < logits[0, 1] # next sentence was random
+        >>> outputs = model(**encoding, next_sentence_label=torch.LongTensor([1]))
+        >>> loss = outputs.loss
+        >>> logits = outputs.logits
         """
+        return_tuple = return_tuple if return_tuple is not None else self.config.use_return_tuple
 
         outputs = self.mobilebert(
             input_ids,
@@ -1197,19 +1207,27 @@ class MobileBertForNextSentencePrediction(MobileBertPreTrainedModel):
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            return_tuple=return_tuple,
         )
 
         pooled_output = outputs[1]
-
         seq_relationship_score = self.cls(pooled_output)
 
-        outputs = (seq_relationship_score,) + outputs[2:]  # add hidden states and attention if they are here
+        next_sentence_loss = None
         if next_sentence_label is not None:
             loss_fct = CrossEntropyLoss()
             next_sentence_loss = loss_fct(seq_relationship_score.view(-1, 2), next_sentence_label.view(-1))
-            outputs = (next_sentence_loss,) + outputs
 
-        return outputs  # (next_sentence_loss), seq_relationship_score, (hidden_states), (attentions)
+        if return_tuple:
+            output = (seq_relationship_score,) + outputs[2:]
+            return ((next_sentence_loss,) + output) if next_sentence_loss is not None else output
+
+        return NextSentencePredictorOutput(
+            loss=next_sentence_loss,
+            logits=seq_relationship_score,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
 
 
 @add_start_docstrings(
@@ -1228,6 +1246,12 @@ class MobileBertForSequenceClassification(MobileBertPreTrainedModel):
         self.init_weights()
 
     @add_start_docstrings_to_callable(MOBILEBERT_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(
+        tokenizer_class=_TOKENIZER_FOR_DOC,
+        checkpoint="google/mobilebert-uncased",
+        output_type=SequenceClassifierOutput,
+        config_class=_CONFIG_FOR_DOC,
+    )
     def forward(
         self,
         input_ids=None,
@@ -1239,6 +1263,7 @@ class MobileBertForSequenceClassification(MobileBertPreTrainedModel):
         labels=None,
         output_attentions=None,
         output_hidden_states=None,
+        return_tuple=None,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`, defaults to :obj:`None`):
@@ -1246,38 +1271,8 @@ class MobileBertForSequenceClassification(MobileBertPreTrainedModel):
             Indices should be in :obj:`[0, ..., config.num_labels - 1]`.
             If :obj:`config.num_labels == 1` a regression loss is computed (Mean-Square loss),
             If :obj:`config.num_labels > 1` a classification loss is computed (Cross-Entropy).
-    Returns:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.MobileBertConfig`) and inputs:
-        loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when :obj:`label` is provided):
-            Classification (or regression if config.num_labels==1) loss.
-        logits (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, config.num_labels)`):
-            Classification (or regression if config.num_labels==1) scores (before SoftMax).
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
-
-    Examples::
-
-        from transformers import BertTokenizer, BertForSequenceClassification
-        import torch
-
-        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        model = BertForSequenceClassification.from_pretrained('bert-base-uncased')
-
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-        labels = torch.tensor([1]).unsqueeze(0)  # Batch size 1
-        outputs = model(input_ids, labels=labels)
-
-        loss, logits = outputs[:2]
         """
+        return_tuple = return_tuple if return_tuple is not None else self.config.use_return_tuple
 
         outputs = self.mobilebert(
             input_ids,
@@ -1288,11 +1283,13 @@ class MobileBertForSequenceClassification(MobileBertPreTrainedModel):
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            return_tuple=return_tuple,
         )
         pooled_output = outputs[1]
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
-        outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
+
+        loss = None
         if labels is not None:
             if self.num_labels == 1:
                 #  We are doing regression
@@ -1301,8 +1298,14 @@ class MobileBertForSequenceClassification(MobileBertPreTrainedModel):
             else:
                 loss_fct = CrossEntropyLoss()
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            outputs = (loss,) + outputs
-        return outputs  # (loss), logits, (hidden_states), (attentions)
+
+        if return_tuple:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return SequenceClassifierOutput(
+            loss=loss, logits=logits, hidden_states=outputs.hidden_states, attentions=outputs.attentions,
+        )
 
 
 @add_start_docstrings(
@@ -1321,6 +1324,12 @@ class MobileBertForQuestionAnswering(MobileBertPreTrainedModel):
         self.init_weights()
 
     @add_start_docstrings_to_callable(MOBILEBERT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_code_sample_docstrings(
+        tokenizer_class=_TOKENIZER_FOR_DOC,
+        checkpoint="google/mobilebert-uncased",
+        output_type=QuestionAnsweringModelOutput,
+        config_class=_CONFIG_FOR_DOC,
+    )
     def forward(
         self,
         input_ids=None,
@@ -1333,6 +1342,7 @@ class MobileBertForQuestionAnswering(MobileBertPreTrainedModel):
         end_positions=None,
         output_attentions=None,
         output_hidden_states=None,
+        return_tuple=None,
     ):
         r"""
         start_positions (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`, defaults to :obj:`None`):
@@ -1343,46 +1353,8 @@ class MobileBertForQuestionAnswering(MobileBertPreTrainedModel):
             Labels for position (index) of the end of the labelled span for computing the token classification loss.
             Positions are clamped to the length of the sequence (`sequence_length`).
             Position outside of the sequence are not taken into account for computing the loss.
-
-    Returns:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.MobileBertConfig`) and inputs:
-        loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when :obj:`labels` is provided):
-            Total span extraction loss is the sum of a Cross-Entropy for the start and end positions.
-        start_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length,)`):
-            Span-start scores (before SoftMax).
-        end_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length,)`):
-            Span-end scores (before SoftMax).
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
-
-    Examples::
-
-        from transformers import MobileBertTokenizer, MobileBertForQuestionAnswering
-        import torch
-
-        tokenizer = BertTokenizer.from_pretrained(model_name_or_path)
-        model = MobileBertForQuestionAnswering.from_pretrained(model_name_or_path)
-
-        question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
-        encoding = tokenizer.encode_plus(question, text)
-        input_ids, token_type_ids = encoding["input_ids"], encoding["token_type_ids"]
-        start_scores, end_scores = model(torch.tensor([input_ids]), token_type_ids=torch.tensor([token_type_ids]))
-
-        all_tokens = tokenizer.convert_ids_to_tokens(input_ids)
-        answer = ' '.join(all_tokens[torch.argmax(start_scores) : torch.argmax(end_scores)+1])
-
-        assert answer == "a nice puppet"
-
         """
+        return_tuple = return_tuple if return_tuple is not None else self.config.use_return_tuple
 
         outputs = self.mobilebert(
             input_ids,
@@ -1393,6 +1365,7 @@ class MobileBertForQuestionAnswering(MobileBertPreTrainedModel):
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            return_tuple=return_tuple,
         )
 
         sequence_output = outputs[0]
@@ -1402,7 +1375,7 @@ class MobileBertForQuestionAnswering(MobileBertPreTrainedModel):
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
 
-        outputs = (start_logits, end_logits,) + outputs[2:]
+        total_loss = None
         if start_positions is not None and end_positions is not None:
             # If we are on multi-GPU, split add a dimension
             if len(start_positions.size()) > 1:
@@ -1418,9 +1391,18 @@ class MobileBertForQuestionAnswering(MobileBertPreTrainedModel):
             start_loss = loss_fct(start_logits, start_positions)
             end_loss = loss_fct(end_logits, end_positions)
             total_loss = (start_loss + end_loss) / 2
-            outputs = (total_loss,) + outputs
 
-        return outputs  # (loss), start_logits, end_logits, (hidden_states), (attentions)
+        if return_tuple:
+            output = (start_logits, end_logits) + outputs[2:]
+            return ((total_loss,) + output) if total_loss is not None else output
+
+        return QuestionAnsweringModelOutput(
+            loss=total_loss,
+            start_logits=start_logits,
+            end_logits=end_logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
 
 
 @add_start_docstrings(
@@ -1439,6 +1421,12 @@ class MobileBertForMultipleChoice(MobileBertPreTrainedModel):
         self.init_weights()
 
     @add_start_docstrings_to_callable(MOBILEBERT_INPUTS_DOCSTRING.format("(batch_size, num_choices, sequence_length)"))
+    @add_code_sample_docstrings(
+        tokenizer_class=_TOKENIZER_FOR_DOC,
+        checkpoint="google/mobilebert-uncased",
+        output_type=MultipleChoiceModelOutput,
+        config_class=_CONFIG_FOR_DOC,
+    )
     def forward(
         self,
         input_ids=None,
@@ -1450,52 +1438,15 @@ class MobileBertForMultipleChoice(MobileBertPreTrainedModel):
         labels=None,
         output_attentions=None,
         output_hidden_states=None,
+        return_tuple=None,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`, defaults to :obj:`None`):
             Labels for computing the multiple choice classification loss.
             Indices should be in ``[0, ..., num_choices-1]`` where `num_choices` is the size of the second dimension
             of the input tensors. (see `input_ids` above)
-
-    Returns:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.MobileBertConfig`) and inputs:
-        loss (:obj:`torch.FloatTensor` of shape `(1,)`, `optional`, returned when :obj:`labels` is provided):
-            Classification loss.
-        classification_scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, num_choices)`):
-            `num_choices` is the second dimension of the input tensors. (see `input_ids` above).
-
-            Classification scores (before SoftMax).
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
-
-    Examples::
-
-        from transformers import MobileBertTokenizer, MobileBertForMultipleChoice
-        import torch
-
-        tokenizer = MobileBertTokenizer.from_pretrained('mobilebert-uncased')
-        model = MobileBertForMultipleChoice.from_pretrained('mobilebert-uncased')
-
-        prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
-        choice0 = "It is eaten with a fork and a knife."
-        choice1 = "It is eaten while held in the hand."
-        labels = torch.tensor(0).unsqueeze(0)  # choice0 is correct (according to Wikipedia ;)), batch size 1
-
-        encoding = tokenizer.batch_encode_plus([[prompt, choice0], [prompt, choice1]], return_tensors='pt', pad_to_max_length=True)
-        outputs = model(**{k: v.unsqueeze(0) for k,v in encoding.items()}, labels=labels) # batch size is 1
-
-        # the linear classifier still needs to be trained
-        loss, logits = outputs[:2]
         """
+        return_tuple = return_tuple if return_tuple is not None else self.config.use_return_tuple
         num_choices = input_ids.shape[1] if input_ids is not None else inputs_embeds.shape[1]
 
         input_ids = input_ids.view(-1, input_ids.size(-1)) if input_ids is not None else None
@@ -1517,6 +1468,7 @@ class MobileBertForMultipleChoice(MobileBertPreTrainedModel):
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            return_tuple=return_tuple,
         )
 
         pooled_output = outputs[1]
@@ -1525,14 +1477,18 @@ class MobileBertForMultipleChoice(MobileBertPreTrainedModel):
         logits = self.classifier(pooled_output)
         reshaped_logits = logits.view(-1, num_choices)
 
-        outputs = (reshaped_logits,) + outputs[2:]  # add hidden states and attention if they are here
-
+        loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(reshaped_logits, labels)
-            outputs = (loss,) + outputs
 
-        return outputs  # (loss), reshaped_logits, (hidden_states), (attentions)
+        if return_tuple:
+            output = (reshaped_logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return MultipleChoiceModelOutput(
+            loss=loss, logits=reshaped_logits, hidden_states=outputs.hidden_states, attentions=outputs.attentions,
+        )
 
 
 @add_start_docstrings(
@@ -1552,6 +1508,12 @@ class MobileBertForTokenClassification(MobileBertPreTrainedModel):
         self.init_weights()
 
     @add_start_docstrings_to_callable(MOBILEBERT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_code_sample_docstrings(
+        tokenizer_class=_TOKENIZER_FOR_DOC,
+        checkpoint="google/mobilebert-uncased",
+        output_type=TokenClassifierOutput,
+        config_class=_CONFIG_FOR_DOC,
+    )
     def forward(
         self,
         input_ids=None,
@@ -1563,45 +1525,14 @@ class MobileBertForTokenClassification(MobileBertPreTrainedModel):
         labels=None,
         output_attentions=None,
         output_hidden_states=None,
+        return_tuple=None,
     ):
         r"""
         labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
             Labels for computing the token classification loss.
             Indices should be in ``[0, ..., config.num_labels - 1]``.
-
-    Returns:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.MobileBertConfig`) and inputs:
-        loss (:obj:`torch.FloatTensor` of shape :obj:`(1,)`, `optional`, returned when ``labels`` is provided) :
-            Classification loss.
-        scores (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, config.num_labels)`)
-            Classification scores (before SoftMax).
-        hidden_states (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_hidden_states=True`` is passed or when ``config.output_hidden_states=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(torch.FloatTensor)`, `optional`, returned when ``output_attentions=True`` is passed or when ``config.output_attentions=True``):
-            Tuple of :obj:`torch.FloatTensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
-
-    Examples::
-
-        from transformers import MobileBertTokenizer, MobileBertForTokenClassification
-        import torch
-
-        tokenizer = MobileBertTokenizer.from_pretrained('mobilebert-uncased')
-        model = MobileBertForTokenClassification.from_pretrained('mobilebert-uncased')
-
-        input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
-        labels = torch.tensor([1] * input_ids.size(1)).unsqueeze(0)  # Batch size 1
-        outputs = model(input_ids, labels=labels)
-
-        loss, scores = outputs[:2]
-
         """
+        return_tuple = return_tuple if return_tuple is not None else self.config.use_return_tuple
 
         outputs = self.mobilebert(
             input_ids,
@@ -1612,6 +1543,7 @@ class MobileBertForTokenClassification(MobileBertPreTrainedModel):
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            return_tuple=return_tuple,
         )
 
         sequence_output = outputs[0]
@@ -1619,7 +1551,7 @@ class MobileBertForTokenClassification(MobileBertPreTrainedModel):
         sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)
 
-        outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
+        loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             # Only keep active parts of the loss
@@ -1632,6 +1564,11 @@ class MobileBertForTokenClassification(MobileBertPreTrainedModel):
                 loss = loss_fct(active_logits, active_labels)
             else:
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            outputs = (loss,) + outputs
 
-        return outputs  # (loss), scores, (hidden_states), (attentions)
+        if return_tuple:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=loss, logits=logits, hidden_states=outputs.hidden_states, attentions=outputs.attentions,
+        )

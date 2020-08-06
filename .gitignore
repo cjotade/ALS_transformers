@@ -1,2 +1,4 @@
 data/
 src/models/runs/
+transformers/*
+transformers/tests/

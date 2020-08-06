@@ -32,40 +32,33 @@ provides the following tasks out of the box:
 Let's see how this work for sentiment analysis (the other tasks are all covered in the
 :doc:`task summary </task_summary>`):
 
-::
+.. code-block::
 
-    from transformers import pipeline
-    classifier = pipeline('sentiment-analysis')
+    >>> from transformers import pipeline
+    >>> classifier = pipeline('sentiment-analysis')
 
 When typing this command for the first time, a pretrained model and its tokenizer are downloaded and cached. We will
 look at both later on, but as an introduction the tokenizer's job is to preprocess the text for the model, which is
 then responsible for making predictions. The pipeline groups all of that together, and post-process the predictions to
-make them readable. For instance
+make them readable. For instance:
 
-::
 
-    classifier('We are very happy to show you the Transformers library.')
+.. code-block::
 
-will return something like this:
-
-::
-
-    [{'label': 'POSITIVE', 'score': 0.999799370765686}]
+    >>> classifier('We are very happy to show you the 🤗 Transformers library.')
+    [{'label': 'POSITIVE', 'score': 0.9997795224189758}]
 
 That's encouraging! You can use it on a list of sentences, which will be preprocessed then fed to the model as a
-`batch`:
+`batch`, returning a list of dictionaries like this one:
 
-::
+.. code-block::
 
-    classifier(["We are very happy to show you the Transformers library.",
-                "We hope you don't hate it."])
-
-returning a list of dictionaries like this one:
-
-::
-
-    [{'label': 'POSITIVE', 'score': 0.999799370765686},
-     {'label': 'NEGATIVE', 'score': 0.5308589935302734}]
+    >>> results = classifier(["We are very happy to show you the 🤗 Transformers library.",
+    ...            "We hope you don't hate it."])
+    >>> for result in results:
+    ...     print(f"label: {result['label']}, with score: {round(result['score'], 4)}")
+    label: POSITIVE, with score: 0.9998
+    label: NEGATIVE, with score: 0.5309
 
 You can see the second sentence has been classified as negative (it needs to be positive or negative) but its score is
 fairly neutral.
@@ -79,13 +72,13 @@ Let's say we want to use another model; for instance, one that has been trained 
 the `model hub <https://huggingface.co/models>`__ that gathers models pretrained on a lot of data by research labs, but
 also community models (usually fine-tuned versions of those big models on a specific dataset). Applying the tags
 "French" and "text-classification" gives back a suggestion "nlptown/bert-base-multilingual-uncased-sentiment". Let's
-see how we can use it. 
+see how we can use it.
 
 You can directly pass the name of the model to use to :func:`~transformers.pipeline`:
 
-::
+.. code-block::
 
-    classifier = pipeline('sentiment-analysis', model="nlptown/bert-base-multilingual-uncased-sentiment")
+    >>> classifier = pipeline('sentiment-analysis', model="nlptown/bert-base-multilingual-uncased-sentiment")
 
 This classifier can now deal with texts in English, French, but also Dutch, German, Italian and Spanish! You can also
 replace that name by a local folder where you have saved a pretrained model (see below). You can also pass a model
@@ -98,29 +91,30 @@ tokenizer associated to the model we picked and instantiate it. The second is
 the model itself. Note that if we were using the library on an other task, the class of the model would change. The
 :doc:`task summary </task_summary>` tutorial summarizes which class is used for which task.
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification
-    ## TENSORFLOW CODE
-    from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
+    >>> ## PYTORCH CODE
+    >>> from transformers import AutoTokenizer, AutoModelForSequenceClassification
+    >>> ## TENSORFLOW CODE
+    >>> from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 
-Now, to download the models and tokenizer we found previously, we just have to use the 
+Now, to download the models and tokenizer we found previously, we just have to use the
 :func:`~transformers.AutoModelForSequenceClassification.from_pretrained` method (feel free to replace ``model_name`` by
 any other model from the model hub):
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    pipe = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer)
-    ## TENSORFLOW CODE
-    model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
-    model = TFAutoModelForSequenceClassification.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    classifier = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer)
+    >>> ## PYTORCH CODE
+    >>> model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
+    >>> model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    >>> tokenizer = AutoTokenizer.from_pretrained(model_name)
+    >>> classifier = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer)
+    >>> ## TENSORFLOW CODE
+    >>> model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
+    >>> # This model only exists in PyTorch, so we use the `from_pt` flag to import that model in TensorFlow.
+    >>> model = TFAutoModelForSequenceClassification.from_pretrained(model_name, from_pt=True)
+    >>> tokenizer = AutoTokenizer.from_pretrained(model_name)
+    >>> classifier = pipeline('sentiment-analysis', model=model, tokenizer=tokenizer)
 
 If you don't find a model that has been pretrained on some data similar to yours, you will need to fine-tune a
 pretrained model on your data. We provide :doc:`example scripts </examples>` to do so. Once you're done, don't forget
@@ -136,24 +130,25 @@ using the :obj:`from_pretrained` method:
 
 ::
 
-    ## PYTORCH CODE
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification
-    model_name = "distilbert-base-uncased-finetuned-sst-2-english"
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    ## TENSORFLOW CODE
-    from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
-    model_name = "distilbert-base-uncased-finetuned-sst-2-english"
-    model = TFAutoModelForSequenceClassification.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    >>> ## PYTORCH CODE
+    >>> from transformers import AutoTokenizer, AutoModelForSequenceClassification
+    >>> model_name = "distilbert-base-uncased-finetuned-sst-2-english"
+    >>> pt_model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    >>> tokenizer = AutoTokenizer.from_pretrained(model_name)
+    >>> ## TENSORFLOW CODE
+    >>> from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
+    >>> model_name = "distilbert-base-uncased-finetuned-sst-2-english"
+    >>> tf_model = TFAutoModelForSequenceClassification.from_pretrained(model_name)
+    >>> tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 Using the tokenizer
 ^^^^^^^^^^^^^^^^^^^
 
 We mentioned the tokenizer is responsible for the preprocessing of your texts. First, it will split a given text in
 words (or part of words, punctuation symbols, etc.) usually called `tokens`. There are multiple rules that can govern
-that process, which is why we need to instantiate the tokenizer using the name of the model, to make sure we use the
-same rules as when the model was pretrained.
+that process (you can learn more about them in the :doc:`tokenizer_summary <tokenizer_summary>`, which is why we need
+to instantiate the tokenizer using the name of the model, to make sure we use the same rules as when the model was
+pretrained.
 
 The second step is to convert those `tokens` into numbers, to be able to build a tensor out of them and feed them to
 the model. To do this, the tokenizer has a `vocab`, which is the part we download when we instantiate it with the
@@ -161,73 +156,92 @@ the model. To do this, the tokenizer has a `vocab`, which is the part we downloa
 
 To apply these steps on a given text, we can just feed it to our tokenizer:
 
-::
+.. code-block::
 
-    input = tokenizer("We are very happy to show you the Transformers library.")
-    print(input)
+    >>> inputs = tokenizer("We are very happy to show you the 🤗 Transformers library.")
 
 This returns a dictionary string to list of ints. It contains the `ids of the tokens <glossary.html#input-ids>`__,
 as mentioned before, but also additional arguments that will be useful to the model. Here for instance, we also have an
 `attention mask <glossary.html#attention-mask>`__ that the model will use to have a better understanding of the sequence:
 
 
-::
+.. code-block::
 
-    {'input_ids': [101, 2057, 2024, 2200, 3407, 2000, 2265, 2017, 1996, 19081, 3075, 1012, 102],
-     'attention_mask': [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}
+    >>> print(inputs)
+    {'input_ids': [101, 2057, 2024, 2200, 3407, 2000, 2265, 2017, 1996, 100, 19081, 3075, 1012, 102], 'attention_mask': [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}
 
 You can pass a list of sentences directly to your tokenizer. If your goal is to send them through your model as a
 batch, you probably want to pad them all to the same length, truncate them to the maximum length the model can accept
 and get tensors back. You can specify all of that to the tokenizer:
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    batch = tokenizer(
-        ["We are very happy to show you the Transformers library.",
-         "We hope you don't hate it."],
-        padding=True, truncation=True, return_tensors="pt")
-    print(batch)
-    ## TENSORFLOW CODE
-    batch = tokenizer(
-        ["We are very happy to show you the Transformers library.",
-         "We hope you don't hate it."],
-        padding=True, truncation=True, return_tensors="tf")
-    print(batch)
+    >>> ## PYTORCH CODE
+    >>> pt_batch = tokenizer(
+    ...     ["We are very happy to show you the 🤗 Transformers library.", "We hope you don't hate it."],
+    ...     padding=True,
+    ...     truncation=True,
+    ...     return_tensors="pt"
+    ... )
+    >>> ## TENSORFLOW CODE
+    >>> tf_batch = tokenizer(
+    ...     ["We are very happy to show you the 🤗 Transformers library.", "We hope you don't hate it."],
+    ...     padding=True,
+    ...     truncation=True,
+    ...     return_tensors="tf"
+    ... )
 
-The padding is automatically applied on the side the model expect it (in this case, on the right), with the
+The padding is automatically applied on the side expected by the model (in this case, on the right), with the
 padding token the model was pretrained with. The attention mask is also adapted to take the padding into account:
 
-::
+.. code-block::
 
-    {'input_ids': tensor([[  101,  2057,  2024,  2200,  3407,  2000,  2265,  2017,  1996, 19081, 3075,  1012,   102],
-                          [  101,  2057,  3246,  2017,  2123,  1005,  1056,  5223,  2009,  1012,  102,     0,     0]]), 
-     'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                               [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]])}
+    >>> ## PYTORCH CODE
+    >>> for key, value in pt_batch.items():
+    ...     print(f"{key}: {value.numpy().tolist()}")
+    input_ids: [[101, 2057, 2024, 2200, 3407, 2000, 2265, 2017, 1996, 100, 19081, 3075, 1012, 102], [101, 2057, 3246, 2017, 2123, 1005, 1056, 5223, 2009, 1012, 102, 0, 0, 0]]
+    attention_mask: [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]]
+    >>> ## TENSORFLOW CODE
+    >>> for key, value in tf_batch.items():
+    ...     print(f"{key}: {value.numpy().tolist()}")
+    input_ids: [[101, 2057, 2024, 2200, 3407, 2000, 2265, 2017, 1996, 100, 19081, 3075, 1012, 102], [101, 2057, 3246, 2017, 2123, 1005, 1056, 5223, 2009, 1012, 102, 0, 0, 0]]
+    attention_mask: [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]]
 
-You can learn more about tokenizers on their :doc:`doc page <main_classes/tokenizer>` (tutorial coming soon).
+You can learn more about tokenizers :doc:`here <preprocessing>`.
 
 Using the model
 ^^^^^^^^^^^^^^^
 
-Once your input has been preprocessed by the tokenizer, you can directly send it to the model. As we mentioned, it will
-contain all the relevant information the model needs. If you're using a TensorFlow model, you can directly pass the
-dictionary keys to tensor, for a PyTorch model, you need to unpack the dictionary by adding :obj:`**`.
+Once your input has been preprocessed by the tokenizer, you can send it directly to the model. As we mentioned, it will
+contain all the relevant information the model needs. If you're using a TensorFlow model, you can pass the
+dictionary keys directly to tensor, for a PyTorch model, you need to unpack the dictionary by adding :obj:`**`.
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    outputs = model(**batch)
-    ## TENSORFLOW CODE
-    outputs = model(batch)
+    >>> ## PYTORCH CODE
+    >>> pt_outputs = pt_model(**pt_batch)
+    >>> ## TENSORFLOW CODE
+    >>> tf_outputs = tf_model(tf_batch)
 
 In 🤗 Transformers, all outputs are tuples (with only one element potentially). Here, we get a tuple with just the
 final activations of the model.
 
-::
+.. code-block::
 
-    (tensor([[-4.1329,  4.3811],
-             [ 0.0818, -0.0418]]),)
+    >>> ## PYTORCH CODE
+    >>> print(pt_outputs)
+    SequenceClassifierOutput(loss=None, logits=tensor([[-4.0833,  4.3364],
+            [ 0.0818, -0.0418]], grad_fn=<AddmmBackward>), hidden_states=None, attentions=None)
+    >>> ## TENSORFLOW CODE
+    >>> print(tf_outputs)
+    (<tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+    array([[-4.0832963 ,  4.336414  ],
+           [ 0.08181786, -0.04179301]], dtype=float32)>,)
+
+The model can return more than just the final activations, which is why the PyTorch output is a special class and the
+TensorFlow output is a tuple. Here we only asked for the final activations, so we get a tuple with one element on the
+TensorFlow side and a :class:`~transformers.modeling_outputs.SequenceClassifierOutput` with just the ``logits`` field
+filled on the PyTorch side.
 
 .. note::
 
@@ -236,41 +250,53 @@ final activations of the model.
 
 Let's apply the SoftMax activation to get predictions.
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    import torch.nn.functional as F
-    predictions = F.softmax(outputs[0], dim=-1)
-    print(predictions)
-    ## TENSORFLOW CODE
-    predictions = tf.nn.softmax(outputs[0], axis=-1)
-    print(predictions)
+    >>> ## PYTORCH CODE
+    >>> import torch.nn.functional as F
+    >>> pt_predictions = F.softmax(pt_outputs.logits, dim=-1)
+    >>> ## TENSORFLOW CODE
+    >>> import tensorflow as tf
+    >>> tf_predictions = tf.nn.softmax(tf_outputs[0], axis=-1)
 
 We can see we get the numbers from before:
 
-::
+.. code-block::
 
-    tensor([[2.0060e-04, 9.9980e-01],
-            [5.3086e-01, 4.6914e-01]])
+    >>> ## TENSORFLOW CODE
+    >>> print(tf_predictions)
+    tf.Tensor(
+    [[2.2042994e-04 9.9977952e-01]
+     [5.3086340e-01 4.6913657e-01]], shape=(2, 2), dtype=float32)
+    >>> ## PYTORCH CODE
+    >>> print(pt_predictions)
+    tensor([[2.2043e-04, 9.9978e-01],
+            [5.3086e-01, 4.6914e-01]], grad_fn=<SoftmaxBackward>)
 
 If you have labels, you can provide them to the model, it will return a tuple with the loss and the final activations.
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    import torch
-    outputs = model(**batch, labels = torch.tensor([1, 0])
-    ## TENSORFLOW CODE
-    import tensorflow as tf
-    outputs = model(batch, labels = tf.constant([1, 0])
+    >>> ## PYTORCH CODE
+    >>> import torch
+    >>> pt_outputs = pt_model(**pt_batch, labels = torch.tensor([1, 0]))
+    >>> ## TENSORFLOW CODE
+    >>> import tensorflow as tf
+    >>> tf_outputs = tf_model(tf_batch, labels = tf.constant([1, 0]))
 
 Models are standard `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`__ or
 `tf.keras.Model <https://www.tensorflow.org/api_docs/python/tf/keras/Model>`__ so you can use them in your usual
 training loop. 🤗 Transformers also provides a :class:`~transformers.Trainer` (or :class:`~transformers.TFTrainer` if
 you are using TensorFlow) class to help with your training (taking care of things such as distributed training, mixed
-precision, etc.). See the training tutorial (coming soon) for more details.
+precision, etc.). See the :doc:`training tutorial <training>` for more details.
 
-Once your model is fine-tuned, you can save it with its tokenizer the following way:
+.. note::
+
+    Pytorch model outputs are special dataclasses so that you can get autocompletion for their attributes in an IDE.
+    They also behave like a tuple or a dictionary (e.g., you can index with an integer, a slice or a string) in which
+    case the attributes not set (that have :obj:`None` values) are ignored.
+
+Once your model is fine-tuned, you can save it with its tokenizer in the following way:
 
 ::
 
@@ -299,12 +325,12 @@ Lastly, you can also ask the model to return all hidden states and all attention
 
 ::
 
-    ## PYTORCH CODE
-    outputs = model(**batch, output_hidden_states=True, output_attentions=True)
-    all_hidden_states, all_attentions = outputs[-2:]
-    ## TENSORFLOW CODE
-    outputs = model(batch, output_hidden_states=True, output_attentions=True)
-    all_hidden_states, all_attentions = outputs[-2:]
+    >>> ## PYTORCH CODE
+    >>> pt_outputs = pt_model(**pt_batch, output_hidden_states=True, output_attentions=True)
+    >>> all_hidden_states, all_attentions = pt_outputs[-2:]
+    >>> ## TENSORFLOW CODE
+    >>> tf_outputs = tf_model(tf_batch, output_hidden_states=True, output_attentions=True)
+    >>> all_hidden_states, all_attentions = tf_outputs[-2:]
 
 Accessing the code
 ^^^^^^^^^^^^^^^^^^
@@ -314,30 +340,32 @@ pretrained model. Behind the scenes, the library has one model class per combina
 code is easy to access and tweak if you need to.
 
 In our previous example, the model was called "distilbert-base-uncased-finetuned-sst-2-english", which means it's
-using the :doc:`DistilBERT </model_doc/distilbert>` architecture. The model automatically created is then a
+using the :doc:`DistilBERT </model_doc/distilbert>` architecture. As
+:class:`~transformers.AutoModelForSequenceClassification` (or  :class:`~transformers.TFAutoModelForSequenceClassification`
+if you are using TensorFlow)` was used, the model automatically created is then a
 :class:`~transformers.DistilBertForSequenceClassification`. You can look at its documentation for all details relevant
 to that specific model, or browse the source code. This is how you would directly instantiate model and tokenizer
 without the auto magic:
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
-    model_name = "distilbert-base-uncased-finetuned-sst-2-english"
-    model = DistilBertForSequenceClassification.from_pretrained(model_name)
-    tokenizer = DistilBertTokenizer.from_pretrained(model_name)
-    ## TENSORFLOW CODE
-    from transformers import DistilBertTokenizer, TFDistilBertForSequenceClassification
-    model_name = "distilbert-base-uncased-finetuned-sst-2-english"
-    model = TFDistilBertForSequenceClassification.from_pretrained(model_name)
-    tokenizer = DistilBertTokenizer.from_pretrained(model_name)
+    >>> ## PYTORCH CODE
+    >>> from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+    >>> model_name = "distilbert-base-uncased-finetuned-sst-2-english"
+    >>> model = DistilBertForSequenceClassification.from_pretrained(model_name)
+    >>> tokenizer = DistilBertTokenizer.from_pretrained(model_name)
+    >>> ## TENSORFLOW CODE
+    >>> from transformers import DistilBertTokenizer, TFDistilBertForSequenceClassification
+    >>> model_name = "distilbert-base-uncased-finetuned-sst-2-english"
+    >>> model = TFDistilBertForSequenceClassification.from_pretrained(model_name)
+    >>> tokenizer = DistilBertTokenizer.from_pretrained(model_name)
 
 Customizing the model
 ^^^^^^^^^^^^^^^^^^^^^
 
 If you want to change how the model itself is built, you can define your custom configuration class. Each architecture
 comes with its own relevant configuration (in the case of DistilBERT, :class:`~transformers.DistilBertConfig`) which
-allows you to specify any of the hidden dimension, dropout rate etc. If you do core modifications, like changing the
+allows you to specify any of the hidden dimension, dropout rate, etc. If you do core modifications, like changing the
 hidden size, you won't be able to use a pretrained model anymore and will need to train from scratch. You would then
 instantiate the model directly from this configuration.
 
@@ -346,18 +374,18 @@ Here we use the predefined vocabulary of DistilBERT (hence load the tokenizer wi
 instantiate the model from the configuration instead of using the
 :func:`~transformers.DistilBertForSequenceClassification.from_pretrained` method).
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    from transformers import DistilBertConfig, DistilBertTokenizer, DistilBertForSequenceClassification
-    config = DistilBertConfig(n_heads=8, dim=512, hidden_dim=4*512)
-    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
-    model = DistilBertForSequenceClassification(config)
-    ## TENSORFLOW CODE
-    from transformers import DistilBertConfig, DistilBertTokenizer, TFDistilBertForSequenceClassification
-    config = DistilBertConfig(n_heads=8, dim=512, hidden_dim=4*512)
-    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
-    model = TFDistilBertForSequenceClassification(config)
+    >>> ## PYTORCH CODE
+    >>> from transformers import DistilBertConfig, DistilBertTokenizer, DistilBertForSequenceClassification
+    >>> config = DistilBertConfig(n_heads=8, dim=512, hidden_dim=4*512)
+    >>> tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+    >>> model = DistilBertForSequenceClassification(config)
+    >>> ## TENSORFLOW CODE
+    >>> from transformers import DistilBertConfig, DistilBertTokenizer, TFDistilBertForSequenceClassification
+    >>> config = DistilBertConfig(n_heads=8, dim=512, hidden_dim=4*512)
+    >>> tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+    >>> model = TFDistilBertForSequenceClassification(config)
 
 For something that only changes the head of the model (for instance, the number of labels), you can still use a
 pretrained model for the body. For instance, let's define a classifier for 10 different labels using a pretrained body.
@@ -365,15 +393,15 @@ We could create a configuration with all the default values and just change the 
 can directly pass any argument a configuration would take to the :func:`from_pretrained` method and it will update the
 default configuration with it:
 
-::
+.. code-block::
 
-    ## PYTORCH CODE
-    from transformers import DistilBertConfig, DistilBertTokenizer, DistilBertForSequenceClassification
-    model_name = "distilbert-base-uncased"
-    model = DistilBertForSequenceClassification.from_pretrained(model_name, num_labels=10)
-    tokenizer = DistilBertTokenizer.from_pretrained(model_name)
-    ## TENSORFLOW CODE
-    from transformers import DistilBertConfig, DistilBertTokenizer, TFDistilBertForSequenceClassification
-    model_name = "distilbert-base-uncased"
-    model = TFDistilBertForSequenceClassification.from_pretrained(model_name, num_labels=10)
-    tokenizer = DistilBertTokenizer.from_pretrained(model_name)
+    >>> ## PYTORCH CODE
+    >>> from transformers import DistilBertConfig, DistilBertTokenizer, DistilBertForSequenceClassification
+    >>> model_name = "distilbert-base-uncased"
+    >>> model = DistilBertForSequenceClassification.from_pretrained(model_name, num_labels=10)
+    >>> tokenizer = DistilBertTokenizer.from_pretrained(model_name)
+    >>> ## TENSORFLOW CODE
+    >>> from transformers import DistilBertConfig, DistilBertTokenizer, TFDistilBertForSequenceClassification
+    >>> model_name = "distilbert-base-uncased"
+    >>> model = TFDistilBertForSequenceClassification.from_pretrained(model_name, num_labels=10)
+    >>> tokenizer = DistilBertTokenizer.from_pretrained(model_name)

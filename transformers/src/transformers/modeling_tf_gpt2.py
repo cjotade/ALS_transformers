@@ -22,8 +22,9 @@ import numpy as np
 import tensorflow as tf
 
 from .configuration_gpt2 import GPT2Config
-from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
+from .file_utils import add_code_sample_docstrings, add_start_docstrings, add_start_docstrings_to_callable
 from .modeling_tf_utils import (
+    TFCausalLanguageModelingLoss,
     TFConv1D,
     TFPreTrainedModel,
     TFSequenceSummary,
@@ -37,6 +38,8 @@ from .tokenization_utils import BatchEncoding
 
 
 logger = logging.getLogger(__name__)
+
+_TOKENIZER_FOR_DOC = "GPT2Tokenizer"
 
 TF_GPT2_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "gpt2",
@@ -215,6 +218,8 @@ class TFGPT2MainLayer(tf.keras.layers.Layer):
         super().__init__(*inputs, **kwargs)
         self.output_attentions = config.output_attentions
         self.output_hidden_states = config.output_hidden_states
+        self.use_cache = config.use_cache
+
         self.num_hidden_layers = config.n_layer
         self.vocab_size = config.vocab_size
         self.n_embd = config.n_embd
@@ -254,10 +259,10 @@ class TFGPT2MainLayer(tf.keras.layers.Layer):
         position_ids=None,
         head_mask=None,
         inputs_embeds=None,
-        use_cache=True,
-        training=False,
+        use_cache=None,
         output_attentions=None,
         output_hidden_states=None,
+        training=False,
     ):
         if isinstance(inputs, (tuple, list)):
             input_ids = inputs[0]
@@ -268,8 +273,8 @@ class TFGPT2MainLayer(tf.keras.layers.Layer):
             head_mask = inputs[5] if len(inputs) > 5 else head_mask
             inputs_embeds = inputs[6] if len(inputs) > 6 else inputs_embeds
             use_cache = inputs[7] if len(inputs) > 7 else use_cache
-            output_attentions = inputs[8] if len(inputs) > 7 else output_attentions
-            output_hidden_states = inputs[9] if len(inputs) > 8 else output_hidden_states
+            output_attentions = inputs[8] if len(inputs) > 8 else output_attentions
+            output_hidden_states = inputs[9] if len(inputs) > 9 else output_hidden_states
             assert len(inputs) <= 10, "Too many inputs."
         elif isinstance(inputs, (dict, BatchEncoding)):
             input_ids = inputs.get("input_ids")
@@ -288,6 +293,7 @@ class TFGPT2MainLayer(tf.keras.layers.Layer):
 
         output_attentions = output_attentions if output_attentions is not None else self.output_attentions
         output_hidden_states = output_hidden_states if output_hidden_states is not None else self.output_hidden_states
+        use_cache = use_cache if use_cache is not None else self.use_cache
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
@@ -436,7 +442,7 @@ GPT2_INPUTS_DOCSTRING = r"""
 
             Indices can be obtained using :class:`transformers.GPT2Tokenizer`.
             See :func:`transformers.PreTrainedTokenizer.encode` and
-            :func:`transformers.PreTrainedTokenizer.encode_plus` for details.
+            :func:`transformers.PreTrainedTokenizer.__call__` for details.
 
             `What are input IDs? <../glossary.html#input-ids>`__
         past (:obj:`List[tf.Tensor]` of length :obj:`config.n_layers`):
@@ -487,6 +493,7 @@ class TFGPT2Model(TFGPT2PreTrainedModel):
         self.transformer = TFGPT2MainLayer(config, name="transformer")
 
     @add_start_docstrings_to_callable(GPT2_INPUTS_DOCSTRING)
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="gpt2")
     def call(self, inputs, **kwargs):
         r"""
     Return:
@@ -508,18 +515,6 @@ class TFGPT2Model(TFGPT2PreTrainedModel):
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import GPT2Tokenizer, TFGPT2Model
-
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        model = TFGPT2Model.from_pretrained('gpt2')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
-        outputs = model(input_ids)
-        last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
-
     """
         outputs = self.transformer(inputs, **kwargs)
         return outputs
@@ -530,7 +525,7 @@ class TFGPT2Model(TFGPT2PreTrainedModel):
     (linear layer with weights tied to the input embeddings). """,
     GPT2_START_DOCSTRING,
 )
-class TFGPT2LMHeadModel(TFGPT2PreTrainedModel):
+class TFGPT2LMHeadModel(TFGPT2PreTrainedModel, TFCausalLanguageModelingLoss):
     def __init__(self, config, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
         self.transformer = TFGPT2MainLayer(config, name="transformer")
@@ -546,8 +541,27 @@ class TFGPT2LMHeadModel(TFGPT2PreTrainedModel):
         return {"inputs": inputs, "past": past, "use_cache": kwargs["use_cache"]}
 
     @add_start_docstrings_to_callable(GPT2_INPUTS_DOCSTRING)
-    def call(self, inputs, **kwargs):
+    @add_code_sample_docstrings(tokenizer_class=_TOKENIZER_FOR_DOC, checkpoint="gpt2")
+    def call(
+        self,
+        inputs,
+        past=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        use_cache=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        labels=None,
+        training=False,
+    ):
         r"""
+        labels (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
+            Labels for computing the cross entropy classification loss.
+            Indices should be in ``[0, ..., config.vocab_size - 1]``.
+
     Return:
         :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.GPT2Config`) and inputs:
         prediction_scores (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`):
@@ -567,26 +581,39 @@ class TFGPT2LMHeadModel(TFGPT2PreTrainedModel):
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
-
-    Examples::
-
-        import tensorflow as tf
-        from transformers import GPT2Tokenizer, TFGPT2LMHeadModel
-
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        model = TFGPT2LMHeadModel.from_pretrained('gpt2')
-
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
-        outputs = model(input_ids)
-        logits = outputs[0]
-
         """
-        transformer_outputs = self.transformer(inputs, **kwargs)
+        if isinstance(inputs, (tuple, list)):
+            labels = inputs[10] if len(inputs) > 10 else labels
+            if len(inputs) > 10:
+                inputs = inputs[:10]
+        elif isinstance(inputs, (dict, BatchEncoding)):
+            labels = inputs.pop("labels", labels)
+
+        transformer_outputs = self.transformer(
+            inputs,
+            past=past,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            training=training,
+        )
+
         hidden_states = transformer_outputs[0]
 
-        lm_logits = self.transformer.wte(hidden_states, mode="linear")
+        logits = self.transformer.wte(hidden_states, mode="linear")
 
-        outputs = (lm_logits,) + transformer_outputs[1:]
+        outputs = (logits,) + transformer_outputs[1:]
+        if labels is not None:
+            # shift labels to the left and cut last logit token
+            logits = logits[:, :-1]
+            labels = labels[:, 1:]
+            loss = self.compute_loss(labels, logits)
+            outputs = (loss,) + outputs
 
         return outputs  # lm_logits, presents, (all hidden_states), (attentions)
 
@@ -622,7 +649,7 @@ class TFGPT2DoubleHeadsModel(TFGPT2PreTrainedModel):
         head_mask=None,
         inputs_embeds=None,
         mc_token_ids=None,
-        use_cache=True,
+        use_cache=None,
         output_attentions=None,
         output_hidden_states=None,
         training=False,
@@ -656,29 +683,26 @@ class TFGPT2DoubleHeadsModel(TFGPT2PreTrainedModel):
 
     Examples::
 
-        # For example purposes. Not runnable.
-        import tensorflow as tf
-        from transformers import GPT2Tokenizer, TFGPT2DoubleHeadsModel
+        >>> import tensorflow as tf
+        >>> from transformers import GPT2Tokenizer, TFGPT2DoubleHeadsModel
 
-        tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        model = TFGPT2DoubleHeadsModel.from_pretrained('gpt2')
+        >>> tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        >>> model = TFGPT2DoubleHeadsModel.from_pretrained('gpt2')
 
-        # Add a [CLS] to the vocabulary (we should train it also!)
-        # This option is currently not implemented in TF 2.0
-        raise NotImplementedError
-        tokenizer.add_special_tokens({'cls_token': '[CLS]'})
-        model.resize_token_embeddings(len(tokenizer))  # Update the model embeddings with the new vocabulary size
-        print(tokenizer.cls_token_id, len(tokenizer))  # The newly token the last token of the vocabulary
+        >>> # Add a [CLS] to the vocabulary (we should train it also!)
+        >>> num_added_tokens = tokenizer.add_special_tokens({'cls_token': '[CLS]'})
 
-        choices = ["Hello, my dog is cute [CLS]", "Hello, my cat is cute [CLS]"]
-        encoded_choices = [tokenizer.encode(s) for s in choices]
-        cls_token_location = [tokens.index(tokenizer.cls_token_id) for tokens in encoded_choices]
+        >>> embedding_layer = model.resize_token_embeddings(len(tokenizer))  # Update the model embeddings with the new vocabulary size
 
-        input_ids = tf.constant(encoded_choices)[None, :]  # Batch size: 1, number of choices: 2
-        mc_token_ids = tf.constant([cls_token_location])  # Batch size: 1
+        >>> choices = ["Hello, my dog is cute [CLS]", "Hello, my cat is cute [CLS]"]
+        >>> encoded_choices = [tokenizer.encode(s) for s in choices]
+        >>> cls_token_location = [tokens.index(tokenizer.cls_token_id) for tokens in encoded_choices]
 
-        outputs = model(input_ids, mc_token_ids=mc_token_ids)
-        lm_prediction_scores, mc_prediction_scores = outputs[:2]
+        >>> input_ids = tf.constant(encoded_choices)[None, :]  # Batch size: 1, number of choices: 2
+        >>> mc_token_ids = tf.constant([cls_token_location])  # Batch size: 1
+
+        >>> outputs = model(input_ids, mc_token_ids=mc_token_ids)
+        >>> lm_prediction_scores, mc_prediction_scores = outputs[:2]
 
         """
         if isinstance(inputs, (tuple, list)):

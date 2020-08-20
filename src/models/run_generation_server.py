@@ -1,5 +1,6 @@
-""" from .GenerativeModel import GenerativeModel
-from ..utils import do_parse_args
+from ..utils.parsing import do_parse_args
+#from .GenerativeModel import GenerativeModel
+#from ..utils import get_tokenizer_and_model
 import socket
 
 def server(model):
@@ -57,16 +58,24 @@ def server(model):
 if __name__ == "__main__":
 	args = do_parse_args()
 	model = GenerativeModel(args)
-	server(model) """
+	server(model)
 
+"""
 import socketserver
 #import socket
 import json
 
+from GenerativeModel import GenerativeModel
+from ...utils.utils import get_tokenizer_and_model
+
+request =  {
+	"text": ""
+}
+
 response = {
-  "sentences": ["John ef ","ann ere ","ssdaa erer", "saa er er"],
-  "words": ["palabra1","palabra2","palabra3"],
-  "error": False
+	"sentences": ["John ef ","ann ere ","ssdaa erer", "saa er er"],
+	"words": ["palabra1","palabra2","palabra3"],
+	"error": False
 }
 
 class MyTCPHandler(socketserver.BaseRequestHandler):
@@ -89,12 +98,11 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 
 			# envia respuesta
 			self.request.sendall(bytes(json.dumps(response), 'utf-8'))
-	
-
 
 if __name__ == "__main__":
 	HOST, PORT = "192.168.1.199", 11000
 	print(HOST)
 	print(PORT)
+
 	server = socketserver.TCPServer((HOST, PORT), MyTCPHandler)
-	server.serve_forever()
+	server.serve_forever()"""

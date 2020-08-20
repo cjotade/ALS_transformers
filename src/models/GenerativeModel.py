@@ -3,9 +3,11 @@ import torch
 
 from lm_scorer.models.auto import AutoLMScorer as LMScorer
 
-from ..utils import get_tokenizer_and_model
-from ..utils import PREPROCESSING_FUNCTIONS
-from ..utils import do_parse_args
+from utils.utils import get_tokenizer_and_model
+#from ..utils.utils import get_tokenizer_and_model
+#from ..utils import get_tokenizer_and_model
+#from ..utils import PREPROCESSING_FUNCTIONS
+#from ..utils import do_parse_args
 
 class GenerativeModel:
     def __init__(self, args, set_translators_and_scorer=True):

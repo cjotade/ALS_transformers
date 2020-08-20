@@ -1,7 +1,9 @@
 import torch
 import argparse
-from .utils import MODEL_CLASSES
-from .utils import set_seed
+from utils.utils import MODEL_CLASSES
+from utils.utils import set_seed
+#from .utils import MODEL_CLASSES
+#from .utils import set_seed
 
 def do_parse_args():
     parser = argparse.ArgumentParser()

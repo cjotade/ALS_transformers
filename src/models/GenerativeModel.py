@@ -28,7 +28,7 @@ class GenerativeModel:
         try:
             self.scorer = LMScorer.from_pretrained(args.model_name_or_path, device=args.device, batch_size=1)
         except:
-            logger.info("WARNING: Using default scorer")
+            print("WARNING: Using default scorer")
             self.scorer = LMScorer.from_pretrained("gpt2", device=args.device, batch_size=1)
 
     def set_translator_input(self, args):
@@ -174,11 +174,12 @@ class GenerativeModel:
             else:
                 optimal_seq = total_sequence
 
-            generated_sequences.append(optimal_seq)
+            generated_sequences.append(optimal_seq.strip())
 
         return generated_sequences
 
     def run(self, sentence):
+        sentence = sentence.strip()
         if self.translator_input is not None:
             # Spanish to English
             translated_sequence = self.translator_input.generate_sentences(sentence, self.translator_input.args)

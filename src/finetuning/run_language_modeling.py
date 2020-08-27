@@ -192,9 +192,6 @@ def main():
             "and load it from here, using --tokenizer_name"
         )
 
-    if model_args.model_type == "gpt2":
-        tokenizer.pad_token = tokenizer.eos_token
-
     if model_args.model_name_or_path:
         model = AutoModelWithLMHead.from_pretrained(
             model_args.model_name_or_path,

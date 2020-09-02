@@ -42,6 +42,8 @@ from transformers import (
     set_seed,
 )
 
+from LineByLineNLPTextDataset import LineByLineNLPTextDataset
+
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +120,7 @@ class DataTrainingArguments:
 def get_dataset(args: DataTrainingArguments, tokenizer: PreTrainedTokenizer, evaluate=False):
     file_path = args.eval_data_file if evaluate else args.train_data_file
     if args.line_by_line:
-        return LineByLineTextDataset(tokenizer=tokenizer, file_path=file_path, block_size=args.block_size)
+        return LineByLineNLPTextDataset(tokenizer=tokenizer, file_path=file_path, block_size=args.block_size)
     else:
         return TextDataset(
             tokenizer=tokenizer, file_path=file_path, block_size=args.block_size, overwrite_cache=args.overwrite_cache
@@ -191,6 +193,9 @@ def main():
             "You are instantiating a new tokenizer from scratch. This is not supported, but you can do it from another script, save it,"
             "and load it from here, using --tokenizer_name"
         )
+
+    if model_args.model_type == "gpt2":
+        tokenizer.pad_token = tokenizer.eos_token
 
     if model_args.model_name_or_path:
         model = AutoModelWithLMHead.from_pretrained(

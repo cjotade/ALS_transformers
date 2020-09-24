@@ -100,9 +100,12 @@ if __name__ == "__main__":
 	print(PORT)
 	server = socketserver.TCPServer((HOST, PORT), MyTCPHandler)
 	print("StartServer")
-	with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+	try:
+		with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 			s.connect((HOST, 11001))
 			s.sendall(b'serverStart')
+	except Exception as e:
+		print("no detecta cliente")
 	server.serve_forever()
 		
 

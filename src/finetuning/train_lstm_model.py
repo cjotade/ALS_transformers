@@ -6,7 +6,7 @@ from transformers import BertTokenizerFast
 from transformers import Trainer, TrainingArguments
 from transformers import DataCollatorForLanguageModeling
 
-from .LineByLineNLPTextDataset import LineByLineNLPTextDataset
+from LineByLineNLPTextDataset import LineByLineNLPTextDataset
 from ..models import GenerativeLSTM
 
 

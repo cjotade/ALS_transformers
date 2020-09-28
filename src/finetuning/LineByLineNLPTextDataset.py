@@ -30,8 +30,10 @@ class LineByLineNLPTextDataset(Dataset):
         else:
             try:
                 dataset = load_from_disk(file_path)
+                logger.info(f"Dataset loaded from {file_path}")
             except:
                 dataset = self.create_dataset(file_path, tokenizer, block_size)
+                logger.info("Creating dataset")
 
         self.dataset = dataset
 

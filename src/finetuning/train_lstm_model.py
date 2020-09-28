@@ -6,7 +6,7 @@ from transformers import BertTokenizerFast
 from transformers import Trainer, TrainingArguments
 from transformers import DataCollatorForLanguageModeling
 
-from LineByLineNLPTextDataset import LineByLineNLPTextDataset
+from .LineByLineNLPTextDataset import LineByLineNLPTextDataset
 from ..models import GenerativeLSTM
 
 
@@ -46,6 +46,8 @@ def create_args():
     parser.add_argument("--mlm", type=int, default=False)
     parser.add_argument("--mlm_probability", type=float, default=0.15)
 
+    parser.add_argument("--tpu_num_cores", type=int, default=None)
+
     args = parser.parse_args()
     return args
 
@@ -75,7 +77,8 @@ def main():
         warmup_steps=args.warmup_steps,
         max_steps=args.max_steps,
         learning_rate=args.learning_rate,
-        fp16=args.fp
+        fp16=args.fp,
+        tpu_num_cores=args.tpu_num_cores
     )
 
     data_collator = DataCollatorForLanguageModeling(

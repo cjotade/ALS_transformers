@@ -59,6 +59,7 @@ def main():
     # Import training_script as a module.
     script_fpath = Path(args.training_script)
     sys.path.append(str(script_fpath.parent.resolve()))
+    sys.path.append(str(script_fpath.parent.parent.resolve()))
     mod_name = script_fpath.stem
     mod = importlib.import_module(mod_name)
 

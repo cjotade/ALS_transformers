@@ -124,6 +124,15 @@ class GenerativeModel:
                 repetition_penalty=args.repetition_penalty,
                 do_sample=True,
                 num_return_sequences=args.num_return_sequences,
+                sample=args.sample,
+                num_iterations=args.num_iterations,
+                grad_length=args.grad_length,
+                horizon_length=args.horizon_length,
+                window_length=args.window_length,
+                decay=args.decay,
+                gamma=args.gamma,
+                gm_scale=args.gm_scale,
+                kl_scale=args.kl_scale,
             )
         elif (args.model_type == "marian"):
             output_sequences = self.model.generate(
@@ -168,17 +177,21 @@ class GenerativeModel:
 
             if (args.model_type != "marian"):
                 optimal_seq, optimal_score = self.optimal_length(total_sequence, len(encoded_prompt[0]))
-                print("COMPARISON")
-                print(total_sequence)
-                print(optimal_seq)
+                print("model output:", total_sequence)
+                print("lm_scorer output:", optimal_seq)
             else:
                 optimal_seq = total_sequence
 
-            generated_sequences.append(optimal_seq.strip())
+            # Deleting prompt_text for return
+            optimal_seq = optimal_seq[len(prompt_text):].strip()
+            print("optimal deletion:", optimal_seq)
+            print()
+            generated_sequences.append(optimal_seq)
 
         return generated_sequences
 
     def run(self, sentence):
+        # Pre-processing
         sentence = sentence.strip()
         if self.translator_input is not None:
             # Spanish to English

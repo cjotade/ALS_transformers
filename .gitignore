@@ -8,3 +8,4 @@ src/finetuning/runs/
 src/finetuning/.ipynb_checkpoints/
 src/utils/__pycache__/
 src/models/__pycache__/
+src/__pycache__/

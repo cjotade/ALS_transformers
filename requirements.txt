@@ -1,7 +1,6 @@
 absl-py==0.9.0
 altair==4.1.0
 apache-beam==2.23.0
-apex==0.1
 appdirs==1.4.4
 astor==0.8.1
 astroid==2.4.2
@@ -76,7 +75,7 @@ Keras==2.4.2
 keyring==20.0.1
 kiwisolver==1.2.0
 lazy-object-proxy==1.4.3
--e git+git@github.com:cjotade/ALS.git@d1e352b5dff4dafcbe765e29fce2021f5419097a#egg=lm_scorer
+lm-scorer==0.4.2
 lockfile==0.12.2
 Markdown==3.2.2
 MarkupSafe==1.1.1
@@ -108,10 +107,8 @@ pbr==5.4.5
 pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==7.1.2
-pkg-resources==0.0.0
 pkginfo==1.5.0.1
 pluggy==0.13.1
-poetry==1.0.10
 portalocker==1.7.0
 prometheus-client==0.8.0
 promise==2.3
@@ -176,7 +173,7 @@ termcolor==1.1.0
 terminado==0.8.3
 testpath==0.4.4
 threadpoolctl==2.1.0
-tokenizers==0.8.0rc1
+tokenizers==0.7.0
 toml==0.10.1
 tomlkit==0.5.11
 toolz==0.10.0

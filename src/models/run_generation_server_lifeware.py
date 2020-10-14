@@ -38,11 +38,11 @@ def get_sentences(text):
 	predicted_tokens = model_sentences.run(text)
 	predicted = []
 	for predic in predicted_tokens:
-		predicted.append(predic[lgth:len(predic)])
+		predicted.append(predic[lgth:len(predic)].strip())
 	return predicted
 
-#def get_words(text):
-#	return model_words.run(text)
+def get_words(text):
+	return model_words.run(text)
 
 def set_model(model,args):
 
@@ -65,7 +65,7 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 			print(response)
 			if "text" in self.msg.keys():
 				response["sentences"] = get_sentences(self.msg["text"])
-				#response["words"] = get_words(self.msg["text"])
+				response["words"] = get_words(self.msg["text"])
 			else:
 				print("no text")
 
@@ -86,15 +86,17 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 
 if __name__ == "__main__":
 	args = do_parse_args()
+	args2 = do_parse_args()
 	# print('model_type =', args.model_type)
 	# print('model_name_or_path =', args.model_name_or_path)
 	# print('length =', args.length)
 	# print('num_return_sequences =', args.num_return_sequences)
 	# print('no_cuda =', args.no_cuda)
-	args_sentences = set_parameters(args,"gpt2","gpt2",4,4)
-	args_words = set_parameters(args,"gpt2","gpt2",1,4)
+	args_sentences = set_parameters(args = args,modelType = "gpt2",modelNameOrPath="gpt2",length=4,numReturnSequences=4)
+	args_words = set_parameters(args = args2,modelType = "bert",modelNameOrPath="./weights/bert-es/",length=1,numReturnSequences=4)
+	#args_words = set_parameters(args = args,modelType = "bert",modelNameOrPath="bert",length=1,numReturnSequences=4)
 	model_sentences = GenerativeModel(args_sentences)
-	#model_words = GenerativeModel(args_words)
+	model_words = GenerativeModel(args_words)
 	HOST, PORT = "127.0.0.1", 11000
 	print(HOST)
 	print(PORT)

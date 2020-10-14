@@ -6,4 +6,5 @@ src/models/runs/
 src/models/extras/.ipynb_checkpoints/
 src/finetuning/runs/
 src/finetuning/.ipynb_checkpoints/
-
+src/utils/__pycache__/
+src/models/__pycache__/

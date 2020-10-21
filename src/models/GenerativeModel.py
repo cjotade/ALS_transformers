@@ -126,13 +126,13 @@ class GenerativeModel:
                 num_return_sequences=args.num_return_sequences,
                 sample=args.sample,
                 num_iterations=args.num_iterations,
-                grad_length=args.grad_length,
-                horizon_length=args.horizon_length,
-                window_length=args.window_length,
-                decay=args.decay,
-                gamma=args.gamma,
-                gm_scale=args.gm_scale,
-                kl_scale=args.kl_scale,
+                #grad_length=args.grad_length,
+                #horizon_length=args.horizon_length,
+                #window_length=args.window_length,
+                #decay=args.decay,
+                #gamma=args.gamma,
+                #gm_scale=args.gm_scale,
+                #kl_scale=args.kl_scale,
             )
         elif (args.model_type == "marian"):
             output_sequences = self.model.generate(

@@ -1,7 +1,7 @@
 import socketserver
 import socket
 import json
-from .GenerativeModel import GenerativeModel
+from ..models import GenerativeModel
 from ..utils import do_parse_args
 
 response = {

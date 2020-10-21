@@ -18,7 +18,9 @@ from transformers import (
     BertForMaskedLM, 
     BertTokenizer,
     MarianMTModel,
-    MarianTokenizer
+    MarianTokenizer,
+    ProphetNetTokenizer,
+    ProphetNetForConditionalGeneration
 )
 
 logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
@@ -38,7 +40,8 @@ MODEL_CLASSES = {
     "transfo-xl": (TransfoXLLMHeadModel, TransfoXLTokenizer),
     "xlm": (XLMWithLMHeadModel, XLMTokenizer),
     "bert": (BertForMaskedLM, BertTokenizer),
-    "marian": (MarianMTModel, MarianTokenizer)
+    "marian": (MarianMTModel, MarianTokenizer),
+    "prophet": (ProphetNetForConditionalGeneration, ProphetNetTokenizer)
 }
 
 def set_seed(args):

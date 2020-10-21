@@ -3,107 +3,101 @@ import socket
 import json
 from .GenerativeModel import GenerativeModel
 from ..utils import do_parse_args
+import copy
 
-response = {
-  "sentences": [],
-  "words": [],
-  "response": "",
-  "error": False
-}
 model_sentences = None
-#model_words = None
-
-def mapping(language,context):
-
-	return
-
-def set_parameters(args,modelType,modelNameOrPath,length,numReturnSequences):
-	args.model_type = modelType
-	args.model_name_or_path = modelNameOrPath
-	args.length = length
-	args.num_return_sequences = numReturnSequences
-	print('----')
-	print('model_type =', args.model_type)
-	print('model_name_or_path =', args.model_name_or_path)
-	print('length =', args.length)
-	print('num_return_sequences =', args.num_return_sequences)
-	print('no_cuda =', args.no_cuda)
-	return args
-
-def get_sentences(text):
-	if text[len(text)-1].isspace() == True:
-		print("ultimo elemento es espacio")
-		text = text[0:len(text)-1]
-	lgth = len(text)
-	predicted_tokens = model_sentences.run(text)
-	predicted = []
-	for predic in predicted_tokens:
-		predicted.append(predic[lgth:len(predic)].strip())
-	return predicted
-
-def get_words(text):
-	return model_words.run(text)
-
-def set_model(model,args):
-
-	return
-
+model_words = None
+args = do_parse_args()
 
 class MyTCPHandler(socketserver.BaseRequestHandler):
 
-	def handle(self):
+	def setup(self):
+		self.language = None
+		self.context = None
+		self.model_sentences = None
+		self.model_words = None
+		self.args_sentences = copy.copy(args)
+		self.args_words = copy.copy(args)
+	
+	def mapping(self):
+		#defaul
+		mt_sentences = "gpt2"
+		mt_words = "bert"
+		mop_sentences = "gpt2"
+		mop_words = "bert-base-uncased"
+		if self.language == "SpanishSpain" and self.context == "coloquial":
+			mop_sentences = "gpt2"
+		return mt_sentences, mt_words, mop_sentences, mop_words
 
+	def set_parameters(self, args, modelType, modelNameOrPath, length, numReturnSequences):
+		args.model_type = modelType
+		args.model_name_or_path = modelNameOrPath
+		args.length = length
+		args.num_return_sequences = numReturnSequences
+		print(args)
+		return args
+
+	def set_models(self):
+		mt_sentences, mt_words, mop_sentences, mop_words = self.mapping()
+		self.args_sentences = self.set_parameters(args = self.args_sentences, modelType = mt_sentences, modelNameOrPath=mop_sentences, length=5, numReturnSequences=4)
+		self.args_words = self.set_parameters(args = self.args_words, modelType = mt_words, modelNameOrPath=mop_words, length=1, numReturnSequences=4)
+		self.model_sentences = GenerativeModel(self.args_sentences)
+		self.model_words = GenerativeModel(self.args_words)
+
+	def get_sentences(self, text):
+		if self.model_sentences != None:
+			return self.model_sentences.run(text)
+		else:
+			return []
+	
+	def get_words(self, text):
+		if self.model_words != None:
+			return self.model_words.run(text)
+		else:
+			return []
+
+	def handle(self):
+		print("conected")
 		while True:
-			# escucha longitud de mensaje
-			self.msgl = self.request.recv(1024).strip().decode("utf-8")
-			print("largo: ",self.msgl)
-			
+			print("---------------------------------------------------")
+			response = {"sentences": [],"words": [],"error":False}
 			# escucha mensaje
-			self.msg = json.loads(self.request.recv(int(self.msgl)).strip().decode("utf-8"))
+			req = self.request.recv(1024).strip()
+			self.msg = json.loads(req.decode("utf-8"))
 			print("{}:".format(self.client_address[0]))
 			print(self.msg)
-			print(response)
-			if "text" in self.msg.keys():
-				response["sentences"] = get_sentences(self.msg["text"])
-				response["words"] = get_words(self.msg["text"])
-			else:
-				print("no text")
-
-			if "language" in self.msg.keys() and "context" in self.msg.keys():
+			if "text" in self.msg.keys() and self.msg["text"] != None:
+				response["sentences"] = self.get_sentences(self.msg["text"])
+				response["words"] = self.get_words(self.msg["text"])
+				self.request.sendall(bytes(json.dumps(response), 'utf-8'))
+			if "language" in self.msg.keys() and "context" in self.msg.keys() and self.msg["language"] != None and self.msg["context"] != None:
 				print("language and context")
-			else:
-				print("no language and context")
-			# envia longitud de respuesta
+				if self.msg["language"] != self.language or self.msg["context"] != self.context:
+					self.language = self.msg["language"]
+					self.context = self.msg["context"]
+					print("Si se cambia el contexto")
+					self.set_models()
+				self.request.sendall(bytes(json.dumps(response), 'utf-8'))
+			if "close" in self.msg.keys() and self.msg["close"] == True:
+				print("close")
+				response["error"] = False
+				self.request.sendall(bytes(json.dumps(response), 'utf-8'))
+				break
 			print(response)
-			l = len(json.dumps(response))
-			print("- l: ",bytes(str(l), 'utf-8'))
-			self.request.send(bytes(str(l), 'utf-8'))
-
-			# envia respuesta
-			self.request.sendall(bytes(json.dumps(response), 'utf-8'))
+			print("**----------------------------------------------**")
 	
+	def finish(self):
+		print("disconected")
 
 
 if __name__ == "__main__":
-	args = do_parse_args()
-	args2 = do_parse_args()
-	# print('model_type =', args.model_type)
-	# print('model_name_or_path =', args.model_name_or_path)
-	# print('length =', args.length)
-	# print('num_return_sequences =', args.num_return_sequences)
-	# print('no_cuda =', args.no_cuda)
-	args_sentences = set_parameters(args = args,modelType = "gpt2",modelNameOrPath="gpt2",length=4,numReturnSequences=4)
-	args_words = set_parameters(args = args2,modelType = "bert",modelNameOrPath="./weights/bert-es/",length=1,numReturnSequences=4)
-	#args_words = set_parameters(args = args,modelType = "bert",modelNameOrPath="bert",length=1,numReturnSequences=4)
-	model_sentences = GenerativeModel(args_sentences)
-	model_words = GenerativeModel(args_words)
 	HOST, PORT = "127.0.0.1", 11000
 	print(HOST)
 	print(PORT)
 	server = socketserver.TCPServer((HOST, PORT), MyTCPHandler)
-	print("StartServer")
 	try:
 		with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+			print("StartServer")
 			s.connect((HOST, 11001))
 			s.sendall(b'serverStart')
 	except Exception as e:

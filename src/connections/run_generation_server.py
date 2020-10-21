@@ -1,4 +1,4 @@
-from .GenerativeModel import GenerativeModel
+from ..models import GenerativeModel
 from ..utils import do_parse_args
 import socket
 

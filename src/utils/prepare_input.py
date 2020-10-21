@@ -1,3 +1,26 @@
+import logging
+
+logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
+# Padding text to help Transformer-XL and XLNet with short prompts as proposed by Aman Rusia
+# in https://github.com/rusiaaman/XLNet-gen#methodology
+# and https://medium.com/@amanrusia/xlnet-speaks-comparison-to-gpt-2-ea1a4e9ba39e
+PADDING_TEXT = """In 1991, the remains of Russian Tsar Nicholas II and his family
+(except for Alexei and Maria) are discovered.
+The voice of Nicholas's young son, Tsarevich Alexei Nikolaevich, narrates the
+remainder of the story. 1883 Western Siberia,
+a young Grigori Rasputin is asked by his father and a group of men to perform magic.
+Rasputin has a vision and denounces one of the men as a horse thief. Although his
+father initially slaps him for making such an accusation, Rasputin watches as the
+man is chased outside and beaten. Twenty years later, Rasputin sees a vision of
+the Virgin Mary, prompting him to become a priest. Rasputin quickly becomes famous,
+with people, even a bishop, begging for his blessing. <eod> </s> <eos>"""
+
 def prepare_ctrl_input(args, _, tokenizer, prompt_text):
     if args.temperature > 0.7:
         logger.info("CTRL typically works better with lower temperatures (and lower top_k).")

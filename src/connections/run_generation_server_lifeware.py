@@ -63,7 +63,15 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 			response = {"sentences": [],"words": [],"error":False}
 			# escucha mensaje
 			req = self.request.recv(1024).strip()
-			self.msg = json.loads(req.decode("utf-8"))
+			req = req.decode("utf-8")
+			print(req)
+			try:
+				self.msg = json.loads(req)
+			except:
+				print("error decoder")
+				response["error"] = True
+				self.request.sendall(bytes(json.dumps(response), 'utf-8'))
+				continue
 			print("{}:".format(self.client_address[0]))
 			print(self.msg)
 			if "text" in self.msg.keys() and self.msg["text"] != None:

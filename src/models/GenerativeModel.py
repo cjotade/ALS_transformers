@@ -83,30 +83,21 @@ class GenerativeModel:
         return encoded_prompt, input_ids
         
     def generate_bert(self, input_ids, num_return_sequences):
-        print("HENERANDO EL MEO VBBEERRTTT")
-        print("input_ids", input_ids)
         hidden_reps = self.model(input_ids)[0]
-        print("hidden_reps", hidden_reps)
         tokenized_sentence = self.tokenizer.tokenize(self.tokenizer.decode(input_ids[0]))
-        print("tokenized_sentence", tokenized_sentence)
         mask_idx = np.where(np.array(tokenized_sentence) == self.tokenizer.mask_token)[0][0]
-        print("mask_idx", mask_idx)
         idxs = torch.argsort(hidden_reps[0, mask_idx], descending=True)
-        print("idxs", idxs)
         first_idxs = []
         for idx in idxs:
             if len(first_idxs) == num_return_sequences:
                 break
             if not self.tokenizer.decode([idx]).startswith(tuple(SPECIAL_CHARS+"'")):
                 first_idxs.append(idx)
-        print("first_idxs", first_idxs)
         output_sequences = []
         for idx in first_idxs:
             tokenized_sentence[mask_idx] = self.tokenizer.decode([idx])
-            print("tokenized_sentence", tokenized_sentence)
             sequence_arr = self.tokenizer.encode(
                 tokenized_sentence[1:-1], add_special_tokens=False, add_space_before_punct_symbol=True)
-            print("sequence_arr", sequence_arr)
             output_sequences.append(sequence_arr)
         return np.array(output_sequences)
 

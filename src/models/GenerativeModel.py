@@ -8,7 +8,7 @@ from ..utils import get_tokenizer_and_model
 from ..utils import PREPROCESSING_FUNCTIONS
 from ..utils import do_parse_args
 
-SPECIAL_CHARS = '.,¡!¿?()/-_";|:।॥#~[]{}*¨@$%&^`¬·|'
+SPECIAL_CHARS = '.,¡!¿?()/-_";|:।॥#~[]{}*¨@$%&^`¬·|’'
 
 class GenerativeModel:
     def __init__(self, args, set_translators_and_scorer=True):
@@ -32,7 +32,7 @@ class GenerativeModel:
             self.scorer = LMScorer.from_pretrained(args.model_name_or_path, device=args.device, batch_size=1)
         except:
             print("WARNING: Using default scorer")
-            self.scorer = LMScorer.from_pretrained("gpt2", device=args.device, batch_size=1)
+            self.scorer = LMScorer.from_pretrained("distilgpt2", device=args.device, batch_size=1)
 
     def set_translator_input(self, args):
         if args.translate_to != "":

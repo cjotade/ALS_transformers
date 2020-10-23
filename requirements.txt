@@ -23,6 +23,7 @@ cleo==0.7.6
 click==7.1.2
 clikit==0.4.3
 configparser==5.0.0
+contractions==0.0.25
 coverage==5.2
 crcmod==1.7
 cryptography==3.0

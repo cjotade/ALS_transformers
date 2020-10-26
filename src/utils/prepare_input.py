@@ -76,5 +76,6 @@ PREPROCESSING_FUNCTIONS = {
     "xlnet": prepare_xlnet_input,
     "transfo-xl": prepare_transfoxl_input,
     "bert": prepare_bert_input,
-    "marian": prepare_marian_input
+    "marian": prepare_marian_input,
+    "distilbert": prepare_bert_input
 }

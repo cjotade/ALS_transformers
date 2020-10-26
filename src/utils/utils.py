@@ -19,6 +19,8 @@ from transformers import (
     BertTokenizer,
     MarianMTModel,
     MarianTokenizer,
+    DistilBertTokenizer,
+    DistilBertForMaskedLM
     #ProphetNetTokenizer,
     #ProphetNetForConditionalGeneration
 )
@@ -41,7 +43,7 @@ MODEL_CLASSES = {
     "xlm": (XLMWithLMHeadModel, XLMTokenizer),
     "bert": (BertForMaskedLM, BertTokenizer),
     "marian": (MarianMTModel, MarianTokenizer),
-    #"prophet": (ProphetNetForConditionalGeneration, ProphetNetTokenizer)
+    "distilbert": (DistilBertForMaskedLM, DistilBertTokenizer),
 }
 
 def set_seed(args):

@@ -23,10 +23,10 @@ class MyTCPHandler(socketserver.BaseRequestHandler):
 		#defaul
 		mt_sentences = "gpt2"
 		mt_words = "bert"
-		mop_sentences = "distilgp2"#"gpt2"
-		mop_words = "bert-base-uncased"#"distilbert"#"bert-base-uncased"#"distilbert-base-uncased"#
-		if self.language == "SpanishSpain" and self.context == "coloquial":
-			mop_sentences = "gpt2"
+		mop_sentences = "weights/gpt2-es/clases"#"distilgp2"#"gpt2"
+		mop_words = "weights/bert-es/colloquial"#"distilbert"#"bert-base-uncased"#"distilbert-base-uncased"#
+		#if self.language == "SpanishSpain" and self.context == "coloquial":
+		#	mop_sentences = "gpt2"
 		return mt_sentences, mt_words, mop_sentences, mop_words
 
 	def set_parameters(self, args, modelType, modelNameOrPath, length, numReturnSequences):

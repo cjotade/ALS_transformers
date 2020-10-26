@@ -2,10 +2,13 @@ data/
 transformers/
 apex/
 weights/
+lm-scorer/
+src/nlp/
 src/models/runs/
 src/models/extras/.ipynb_checkpoints/
 src/finetuning/runs/
 src/finetuning/.ipynb_checkpoints/
 src/utils/__pycache__/
 src/models/__pycache__/
+src/connections/__pycache__/
 src/__pycache__/

@@ -8,7 +8,7 @@ from ..utils import get_tokenizer_and_model
 from ..utils import PREPROCESSING_FUNCTIONS
 from ..utils import do_parse_args
 
-SPECIAL_CHARS = '.,¡!¿?()/-_";|:।॥#~[]{}*¨@$%&^`¬·|’'
+SPECIAL_CHARS = '.,¡!¿?()/-_";|:।॥#~[]{}*¨@$%&^`¬·|’+=。><'
 
 class GenerativeModel:
     def __init__(self, args, set_translators_and_scorer=True):
@@ -120,7 +120,17 @@ class GenerativeModel:
         return optimal_seq, optimal_score
 
     def generate_array_sequences(self, input_ids, encoded_prompt, args, num_return_sequences):
-        if (args.model_type != "bert") and (args.model_type != "marian"):
+        if (args.model_type == "bert") or (args.model_type == "distilbert"):
+            print("generating bert")
+            output_sequences = self.generate_bert(
+                input_ids=input_ids,
+                num_return_sequences=num_return_sequences
+            )
+        elif (args.model_type == "marian"):
+            output_sequences = self.model.generate(
+                input_ids=input_ids
+            )
+        else:
             output_sequences = self.model.generate(
                 input_ids=input_ids,
                 max_length=args.length + len(encoded_prompt[0]),
@@ -132,16 +142,6 @@ class GenerativeModel:
                 num_return_sequences=num_return_sequences,
                 sample=args.sample,
                 num_iterations=args.num_iterations,
-            )
-        elif (args.model_type == "marian"):
-            output_sequences = self.model.generate(
-                input_ids=input_ids
-            )
-        else:
-            print("generating bert")
-            output_sequences = self.generate_bert(
-                input_ids=input_ids,
-                num_return_sequences=num_return_sequences
             )
         # Remove the batch dimension when returning multiple sequences
         if len(output_sequences.shape) > 2:
@@ -186,7 +186,7 @@ class GenerativeModel:
             # Deleting prompt text at start and clean break lines
             seq_deletion = optimal_seq[len(prompt_text):].strip()
             seq_deletion = seq_deletion.replace("\n", "")
-            if (seq_deletion == "") or (seq_deletion.startswith(tuple(SPECIAL_CHARS))):
+            if (seq_deletion == "") or (seq_deletion.startswith(tuple(SPECIAL_CHARS))) or (len(seq_deletion) <= 1):
                 print("Seq deletion (skip):", seq_deletion)
                 skipped_sequences.append(seq_deletion)
             else:

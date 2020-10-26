@@ -2,7 +2,6 @@ data/
 transformers/
 apex/
 weights/
-lm-scorer/
 src/nlp/
 src/models/runs/
 src/models/extras/.ipynb_checkpoints/

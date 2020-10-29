@@ -1,3 +1,4 @@
+import logging
 import contractions
 import numpy as np
 import torch
@@ -8,7 +9,14 @@ from ..utils import get_tokenizer_and_model
 from ..utils import PREPROCESSING_FUNCTIONS
 from ..utils import do_parse_args
 
-SPECIAL_CHARS = '.,¡!¿?()/-_";|:।॥#~[]{}*¨@$%&^`¬·|’+=。><'
+logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
+SPECIAL_CHARS = '.,¡!¿?()/-_";|:।॥#~[]{}*¨@$%&^`¬·|’+=。><§'
 
 class GenerativeModel:
     def __init__(self, args, set_translators_and_scorer=True):
@@ -31,7 +39,7 @@ class GenerativeModel:
         try:
             self.scorer = LMScorer.from_pretrained(args.model_name_or_path, device=args.device, batch_size=1)
         except:
-            print("WARNING: Using default scorer")
+            logger.info("WARNING: Using default scorer")
             self.scorer = LMScorer.from_pretrained("distilgpt2", device=args.device, batch_size=1)
 
     def set_translator_input(self, args):
@@ -121,7 +129,6 @@ class GenerativeModel:
 
     def generate_array_sequences(self, input_ids, encoded_prompt, args, num_return_sequences):
         if (args.model_type == "bert") or (args.model_type == "distilbert"):
-            print("generating bert")
             output_sequences = self.generate_bert(
                 input_ids=input_ids,
                 num_return_sequences=num_return_sequences
@@ -178,24 +185,25 @@ class GenerativeModel:
 
             if (args.model_type != "marian"):
                 optimal_seq, _ = self.optimal_length(total_sequence, len(encoded_prompt[0]))
-                print("Model Output:", total_sequence.replace("\n", ""))
-                print("Lm_scorer Output:", optimal_seq.replace("\n", ""))
+                logger.info("Model Output: {}".format(total_sequence.replace('\n', '')))
+                logger.info("Lm_scorer Output: {}".format(optimal_seq.replace('\n', '')))
             else:
                 optimal_seq = total_sequence
 
-            # Deleting prompt text at start and clean break lines
+            # Deleting prompt text at start
+            # Cleaning text with SPECIAL_CHARS
             seq_deletion = optimal_seq[len(prompt_text):].strip()
             seq_deletion = seq_deletion.replace("\n", "")
-            if (seq_deletion == "") or (seq_deletion.startswith(tuple(SPECIAL_CHARS))) or (len(seq_deletion) <= 1):
-                print("Seq deletion (skip):", seq_deletion)
+            if (seq_deletion == "") or (seq_deletion.startswith(tuple(SPECIAL_CHARS))) or (len(seq_deletion) <= 1) or (seq_deletion in generated_sequences):
+                logger.info(f"Seq deletion (skip): {seq_deletion}")
                 skipped_sequences.append(seq_deletion)
             else:
                 if seq_deletion.startswith("'"):
                     seq_deletion = contractions.fix(prompt_text + seq_deletion)
                     seq_deletion = seq_deletion[len(prompt_text):].strip()
-                    print("Seq deletion (contractions):", seq_deletion)
+                    logger.info(f"Seq deletion (contractions): {seq_deletion}")
                 else:
-                    print("Seq deletion (normal):", seq_deletion)
+                    logger.info(f"Seq deletion (normal): {seq_deletion}")
                 generated_sequences.append(seq_deletion)
 
         return generated_sequences, skipped_sequences
@@ -205,11 +213,11 @@ class GenerativeModel:
         # Generate array sequences
         output_sequences = self.generate_array_sequences(input_ids, encoded_prompt, args, args.num_return_sequences)
         # Generation
-        print("\nEncoding sequences...") 
+        logger.info("\nEncoding sequences...") 
         generated_sequences, skipped_sequences = self.transform_sequences(output_sequences, prompt_text, encoded_prompt, args)
         # Post-Processing
         if skipped_sequences:   
-            print("\nPost-Processing skipped sequences...") 
+            logger.info("\nPost-Processing skipped sequences...") 
             output_sequences_skips = self.generate_array_sequences(input_ids, encoded_prompt, args, len(skipped_sequences))
             generated_sequences_skips, skipped_sequences_skips  = self.transform_sequences(output_sequences_skips, prompt_text, encoded_prompt, args)
             # Merge
@@ -222,18 +230,20 @@ class GenerativeModel:
     def run(self, sentence):
         # Pre-processing
         sentence = sentence.strip()
+        # Translator Input
         if self.translator_input is not None:
-            print("\nRunning traslator input...") 
+            logger.info("\nRunning traslator input...") 
             # Spanish to English
             translated_sequence = self.translator_input.generate_sentences(sentence, self.translator_input.args)
             sentence = translated_sequence[0]
-            print(f"\nTranslator input: {sentence}")
+            logger.info(f"\nTranslator input: {sentence}")
         # Generate sequences
-        print("\nGenerating sequences from:", sentence)
+        logger.info(f"\nGenerating sequences from: {sentence}")
         generated_sequences = self.generate_sentences(sentence, self.args)
-        print(f"\nGenerated sequences: {generated_sequences}")
+        logger.info(f"\nGenerated sequences: {generated_sequences}")
+        # Translator Output
         if self.translator_output is not None:
-            print("\nRunning traslator output...") 
+            logger.info("\nRunning traslator output...") 
             # English to Spanish
             translated_sequences = []
             for sentence in generated_sequences:

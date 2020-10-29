@@ -1,6 +1,14 @@
+import logging
 from ..models import GenerativeModel
 from ..utils import do_parse_args
 import socket
+
+logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
 
 def server(model):
 	HOST = "localhost"
@@ -14,22 +22,22 @@ def server(model):
 	try: 
 		while True:
 			# Wait for a connection
-			print('Waiting for a Request...')
+			logger.info('Waiting for a Request...')
 			connection, client_address = s.accept()
-			print('Request recived from %s:%d' % client_address)
+			logger.info('Request recived from %s:%d' % client_address)
 
 			try:
 				# Receive the lengh of the sentence request sended as byte(little)sequence and readed as int
 				l = int.from_bytes(connection.recv(4), byteorder='little')
-				print('String Length : {:d}'.format(l))
+				logger.info('String Length : {:d}'.format(l))
 
 				# Receive the sentence
 				sentence = str(connection.recv(l), 'utf-8')
-				print(f'Sentence : {sentence}')
+				logger.info(f'Sentence : {sentence}')
 
 				# EXECUTE THE MODEL
 				predicted_tokens = model.run(sentence)
-				print(f'Predicted tokens:{predicted_tokens}')
+				logger.info(f'Predicted tokens:{predicted_tokens}')
 				
 				# Send how many predictions to client
 				n_preds = len(predicted_tokens).to_bytes(4, byteorder='little')
@@ -43,13 +51,12 @@ def server(model):
 					connection.send(l_result)
 					# Send the string
 					connection.send(pred_token.encode())
-				print("Tokens Predicted!")
-				print()
+				logger.info("Tokens Predicted!")
 			finally:
 				# Clean up the connection
 				connection.close()
 	except KeyboardInterrupt:
-		print('exiting.')
+		logger.error('exiting.')
 	finally:
 		s.shutdown(socket.SHUT_RDWR)
 		s.close()

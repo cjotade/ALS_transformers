@@ -155,7 +155,7 @@ class GenerativeModel:
             output_sequences.squeeze_()
         return output_sequences
 
-    def transform_sequences(self, output_sequences, prompt_text, encoded_prompt, args):
+    def transform_sequences(self, output_sequences, prompt_text, encoded_prompt, args, **kwargs):
         generated_sequences = []
         skipped_sequences = []
         for _, generated_sequence in enumerate(output_sequences):
@@ -194,7 +194,9 @@ class GenerativeModel:
             # Cleaning text with SPECIAL_CHARS
             seq_deletion = optimal_seq[len(prompt_text):].strip()
             seq_deletion = seq_deletion.replace("\n", "")
-            if (seq_deletion == "") or (seq_deletion.startswith(tuple(SPECIAL_CHARS))) or (len(seq_deletion) <= 1) or (seq_deletion in generated_sequences):
+
+            previous_generated = kwargs.get("previous_generated", [])
+            if (seq_deletion == "") or (seq_deletion.startswith(tuple(SPECIAL_CHARS))) or (len(seq_deletion) <= 1) or (seq_deletion in generated_sequences) or (seq_deletion in previous_generated):
                 logger.info(f"Seq deletion (skip): {seq_deletion}")
                 skipped_sequences.append(seq_deletion)
             else:
@@ -219,7 +221,7 @@ class GenerativeModel:
         if skipped_sequences:   
             logger.info("\nPost-Processing skipped sequences...") 
             output_sequences_skips = self.generate_array_sequences(input_ids, encoded_prompt, args, len(skipped_sequences))
-            generated_sequences_skips, skipped_sequences_skips  = self.transform_sequences(output_sequences_skips, prompt_text, encoded_prompt, args)
+            generated_sequences_skips, skipped_sequences_skips  = self.transform_sequences(output_sequences_skips, prompt_text, encoded_prompt, args, **{"previous_generated": generated_sequences})
             # Merge
             sequences = generated_sequences + generated_sequences_skips + skipped_sequences + skipped_sequences_skips
             sequences = sequences[:args.num_return_sequences]

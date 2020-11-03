@@ -42,7 +42,7 @@ from transformers import (
     set_seed,
 )
 
-from LineByLineNLPTextDataset import LineByLineNLPTextDataset
+from .LineByLineNLPTextDataset import LineByLineNLPTextDataset
 
 
 logger = logging.getLogger(__name__)

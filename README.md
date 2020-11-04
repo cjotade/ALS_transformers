@@ -6,7 +6,9 @@ Before you can use our model install the requirements:
 ```python
 pip install -r requirements.txt
 ```
-If you have any incovenient using the forked transformers or apex libraries from our Github, please install them from scratch/source. For more details see https://github.com/huggingface/transformers and https://github.com/NVIDIA/apex.
+WARNING: Windows users may have incovenients installing torch using pip, so install it from scratch. If you have any other incovenient installing some package from requirements.txt, try to ignore them and retry the instalation.
+
+WARNING: If you have any incovenient installing Transformers or Apex libraries, please install them from scratch/source. For more details see https://github.com/huggingface/transformers and https://github.com/NVIDIA/apex.
 
 * Transformers:
 ```python
@@ -25,7 +27,7 @@ pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cud
 ```
 
 ## Client/Server
-The client/server model is in src/models/run_generation_client.py and src/models/run_generation_server.py
+The client/server model is in src/connections/run_generation_client_interact.py and src/connections/run_generation_server.py
 
 Some useful parameters for the server: 
 
@@ -36,7 +38,13 @@ Some useful parameters for the server:
 * translate_to ("use MarianMT translator, examples: es, es_CL, fr")
 
 ```python
-python run_generation_server.py --model_type=gpt2 --model_name_or_path=gpt2 --length=10 --num_return_sequences=3
+python -m src.connections.run_generation_server --model_type=gpt2 --model_name_or_path=gpt2 --length=10 --num_return_sequences=3
+```
+
+And for the client:
+
+```python
+python -m src.connections.run_generation_client_interact
 ```
 
 ## Optional Requirements

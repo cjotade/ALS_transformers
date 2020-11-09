@@ -5,8 +5,6 @@ from ..models import GenerativeModel
 from ..utils import do_parse_args
 import copy
 
-model_sentences = None
-model_words = None
 args = do_parse_args()
 
 class MyTCPHandler(socketserver.BaseRequestHandler):

@@ -42,19 +42,6 @@ def do_parse_args():
     )
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument("--p", type=float, default=0.9)
-    """parser.add_argument(
-        "--window_length",
-        type=int,
-        default=0,
-        help="Length of past which is being optimized; 0 corresponds to infinite window length",
-    )
-    parser.add_argument(
-        "--horizon_length", type=int, default=1, help="Length of future to optimize over",
-    )
-    parser.add_argument("--decay", action="store_true", help="whether to decay or not")
-    parser.add_argument("--gamma", type=float, default=1.5)
-    parser.add_argument("--gm_scale", type=float, default=0.9)
-    parser.add_argument("--kl_scale", type=float, default=0.01)"""
     
     parser.add_argument("--padding_text", type=str, default="", help="Padding text for Transfo-XL and XLNet.")
     parser.add_argument("--xlm_language", type=str, default="", help="Optional language when used with the XLM model.")
